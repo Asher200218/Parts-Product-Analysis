@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>零件 / 产品 / 工人 数据录入 · Parts Analysis Input (本地)</title>
+<link rel="stylesheet" href="styles.css?v=52" />
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <h1>零件 · 产品 · 工人 数据录入</h1>
+    <p class="sub">Parts / Products / Workers — mass input &amp; Excel import · 完全本地运行</p>
+  </div>
+  <div class="privacy" title="所有数据只保存在本机浏览器，不联网、不上传">
+    🔒 100% 本地 · 无网络 · 数据存在本机
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="products">产品 <span class="cnt" id="cnt-products">0</span></button>
+  <button class="tab" data-tab="parts">零件 <span class="cnt" id="cnt-parts">0</span></button>
+  <button class="tab" data-tab="workers">工人能力 <span class="cnt" id="cnt-workers">0</span></button>
+  <button class="tab" data-tab="orders">订单 <span class="cnt" id="cnt-orders">0</span></button>
+  <button class="tab" data-tab="io">导入 / 导出</button>
+  <button class="tab" data-tab="analysis">分析</button>
+  <button class="tab" data-tab="sched">排期</button>
+  <button class="tab" data-tab="retro">复盘</button>
+  <button class="tab" data-tab="hourlog">工时台账</button>
+</nav>
+
+<main>
+  <!-- ============ PRODUCTS ============ -->
+  <section class="panel active" id="panel-products">
+    <div class="panel-head">
+      <h2>产品 Products</h2>
+      <p class="hint">产品名会成为 <code>workers.xlsx</code> 的列、<code>orders.xlsx</code> 里引用的类型。重命名 / 删除会自动同步工人能力与订单。</p>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="product-input" placeholder="输入一个产品名，回车添加…" />
+      <button class="btn primary" id="product-add">+ 添加</button>
+      <button class="btn" id="product-bulk">批量添加（每行一个）</button>
+    </div>
+    <ul class="chip-list" id="product-list"></ul>
+  </section>
+
+  <!-- ============ PARTS ============ -->
+  <section class="panel" id="panel-parts">
+    <div class="panel-head">
+      <h2>零件 Parts（VC）</h2>
+      <p class="hint">每行一个 <b>VC</b>（3 位代码）：<b>VC 代码</b> + <b>难度</b>（高/低/无，用于工人能力匹配）+ <b>重复设计工时</b> + <b>首单设计工时</b>。工时取值 0 当作 0.03；首单留空则一律用重复工时。校对工时 = 设计 × <b>校对系数</b>（下方可设；默认 0.3，可在「工时台账」按实际报工一键校准）。导入 <code>parts.xlsx</code> 按列读取：第1列=VC代码，<b>第8列=重复设计工时</b>，<b>第9列=首单设计工时</b>。</p>
+    </div>
+    <div class="settings-bar" id="hours-settings" hidden></div>
+    <div class="settings-bar" id="verify-settings"></div>
+    <div class="toolbar">
+      <button class="btn primary" id="part-add">+ 添加行</button>
+      <button class="btn" id="part-paste">粘贴导入（从 Excel 复制）</button>
+      <button class="btn" id="part-import">导入 parts.xlsx</button>
+      <input type="search" id="part-filter" placeholder="筛选零件…" />
+      <span class="spacer"></span>
+      <button class="btn ghost danger" id="part-clear">清空</button>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="part-table">
+        <thead><tr><th class="rownum">#</th><th>VC 代码</th><th style="width:120px">难度</th><th style="width:150px">重复设计工时<br><small>第8列 (h)</small></th><th style="width:150px">首单设计工时<br><small>第9列 (h)</small></th><th class="act"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ WORKERS ============ -->
+  <section class="panel" id="panel-workers">
+    <div class="panel-head">
+      <h2>工人能力 Workers</h2>
+      <p class="hint">能力分两道：<b>设计</b>与<b>校验</b>。每个产品两格，分别填该工人的<b>设计</b>等级和<b>校验</b>等级（A/B/C，留空=不做这道）。只会校验的工人就把设计留空，反之亦然。A=高/低/无，B=低/无，C=仅无。等级只决定<b>能不能做</b>该难度；<b>工时</b>由 VC 表决定（校对 = 设计 × 校对系数，见「零件」页）。导入 orders.xlsx 时，订单里的设计/校对工人会<b>自动加到这里</b>（能力请补填）。</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="worker-add">+ 添加工人</button>
+      <button class="btn" id="worker-paste">粘贴导入（从 Excel 复制）</button>
+      <button class="btn" id="worker-import">导入 workers.xlsx</button>
+      <button class="btn" id="worker-rand">🎲 随机能力（测试）</button>
+      <span class="spacer"></span>
+      <button class="btn ghost danger" id="worker-clear">清空</button>
+    </div>
+    <div class="table-wrap">
+      <table class="grid matrix" id="worker-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="worker-noproducts" hidden>请先在「产品」标签里添加产品，才能填写工人能力矩阵。</p>
+
+    <div class="section-title" style="margin-top:18px">请假登记 <span style="color:var(--muted);font-weight:500">  仅影响「排期」：请假当天按填写的小时数从团队产能里扣掉（<b>留空 = 整天</b>，也可填任意小于整班的时长，如 3、5.5）；<b>不影响</b>「分析」「复盘」。</span></div>
+    <div class="toolbar">
+      <button class="btn" id="leave-add">+ 添加请假</button>
+    </div>
+    <div class="table-wrap" id="leave-wrap"></div>
+    <p class="empty-note" id="leave-empty" hidden>还没有请假记录。有人请假时点「+ 添加请假」，选工人、填起止日期；「每日请假(小时)」留空=整天，也可填半天/几小时。</p>
+  </section>
+
+  <!-- ============ ORDERS ============ -->
+  <section class="panel" id="panel-orders">
+    <div class="panel-head">
+      <h2>订单 Orders</h2>
+      <p class="hint">每行一张订单：<b>产品</b>（标签）+ <b>VC 列表</b> + <b>设计工人</b> + <b>校对工人</b> + <b>交付日期</b>（截止）+ <b>创建日期</b>（用于判定首单/重复）+ <b>实际完成日期</b>。「导入 orders.xlsx」会<b>自动识别表头</b>（遍历整张表找表头行，按 Sales Order/Item、VC、设计/校对、交付/创建/完成、产品等关键词匹配列，能避开“设计工时”这类干扰列），弹出映射确认框供你核对/调整后再导入；识别不了就按旧模板列序（1=VC · 3=设计 · 4=校对 · 5=产品 · 6=交付 · 7=创建 · 8=实际完成）预填。</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="order-add">+ 添加订单</button>
+      <button class="btn" id="order-paste">粘贴导入（从 Excel 复制）</button>
+      <button class="btn" id="order-import">导入 orders.xlsx</button>
+      <button class="btn" id="order-rand">🎲 随机生成（测试）</button>
+      <button class="btn ghost danger" id="order-clear2">🧹 清空订单</button>
+      <input type="search" id="order-filter" placeholder="搜索订单（VC / 产品 / 工人 / 日期）…" />
+      <span class="spacer"></span>
+      <button class="btn ghost danger" id="order-clear">清空</button>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="order-table">
+        <thead><tr><th class="rownum">#</th><th style="width:160px">订单号</th><th style="width:120px">产品</th><th>VC 列表</th><th style="width:120px">设计工人</th><th style="width:120px">校对工人</th><th style="width:140px">交付日期</th><th style="width:140px">创建日期</th><th class="act"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ IMPORT / EXPORT ============ -->
+  <section class="panel" id="panel-io">
+    <div class="panel-head">
+      <h2>导入 / 导出 Import &amp; Export</h2>
+      <p class="hint">导出的文件与 <code>analyze.py</code> 完全兼容：把它们放进 <code>parts-analysis/data/</code> 然后运行 <code>python analyze.py</code>。</p>
+    </div>
+
+    <div class="io-grid">
+      <div class="io-card">
+        <h3>📥 导入 Excel / JSON</h3>
+        <p>自动识别 <code>parts.xlsx</code> / <code>workers.xlsx</code> / <code>orders.xlsx</code> / <code>products.json</code>。可一次选多个文件。</p>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" multiple accept=".xlsx,.xls,.json" hidden />
+          <span class="dz-icon">⬆</span>
+          <span>把文件拖到这里，或点击选择</span>
+          <span class="dz-sub">parts.xlsx · workers.xlsx · orders.xlsx · products.json</span>
+        </label>
+        <div class="io-mode">
+          导入方式：
+          <label><input type="radio" name="impmode" value="replace" checked /> 覆盖</label>
+          <label><input type="radio" name="impmode" value="merge" /> 合并（追加/更新）</label>
+        </div>
+      </div>
+
+      <div class="io-card">
+        <h3>📤 导出（供 analyze.py 使用）</h3>
+        <div class="dl-row"><button class="btn" data-export="parts">parts.xlsx</button><span id="dl-parts">—</span></div>
+        <div class="dl-row"><button class="btn" data-export="workers">workers.xlsx</button><span id="dl-workers">—</span></div>
+        <div class="dl-row"><button class="btn" data-export="orders">orders.xlsx</button><span id="dl-orders">—</span></div>
+        <div class="dl-row"><button class="btn" data-export="products">products.json</button><span id="dl-products">—</span></div>
+        <button class="btn primary block" id="export-all">⬇ 一键导出全部</button>
+      </div>
+
+      <div class="io-card">
+        <h3>💾 本机存档（备份 / 恢复）</h3>
+        <p>把当前全部数据存成一个 JSON，方便备份或换机器。</p>
+        <button class="btn block" id="backup-save">导出整体备份 .json</button>
+        <label class="btn block" style="text-align:center;cursor:pointer">
+          导入整体备份 .json
+          <input type="file" id="backup-input" accept=".json" hidden />
+        </label>
+        <button class="btn ghost danger block" id="wipe-all">清空所有数据</button>
+      </div>
+    </div>
+    <pre class="log" id="io-log" hidden></pre>
+  </section>
+
+  <!-- ============ ANALYSIS ============ -->
+  <section class="panel" id="panel-analysis">
+    <div class="panel-head">
+      <h2>分析 Analysis</h2>
+      <p class="hint">把<b>全部订单的理论工时</b>加总（设计 = Σ(VC工时) × 系数；校对 = 设计 × 校对系数，可在「零件」页设置或用台账实际值校准），并与「工时台账」导入的<b>实际报工</b>比对：<b>② 全员合计</b>（理论 vs 实际的总量、差值、比值）+ <b>③ 每位工人</b>（按订单指派的理论工时 vs 台账报工）+ <b>④ 订单工时明细</b>。比对前提：订单批次与台账时段覆盖同一段时间。</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="analysis-run">▶ 开始分析</button>
+      <button class="btn" id="analysis-export">📤 导出报告 .xlsx</button>
+    </div>
+    <div id="analysis-out"></div>
+  </section>
+
+  <!-- ============ SCHEDULE ============ -->
+  <section class="panel" id="panel-sched">
+    <div class="panel-head">
+      <h2>排期 Schedule（按交期排程）</h2>
+      <p class="hint">只排<b>未完成</b>的订单（没填「实际完成日期」的），从<b>今天</b>向后排；已完成的看「复盘」。三种排法，均按团队总产能连续消耗、逐单给出<b>预计开始/完成日</b>：<b>① 连续排</b>——不管交期，按创建日期排队，干完一个做下一个；<b>② 按交期(slot)</b>——交期最早的先做，某批活提前做完就把后面的任务自动填进到交期前的空余时间；<b>③ 贴近交期</b>（参考）——尽量晚开工，在交付日前几个工作日刚好完成（缓冲可调）。①②的每日总负荷相同，区别在先做哪张单。能力瓶颈见「分析」。</p>
+    </div>
+    <div class="settings-bar" id="sched-controls">
+      <span class="settings-label">开工日期：</span>
+      <label><input type="date" id="sched-start" /></label>
+      <span class="settings-label">每人每日工时：</span>
+      <label><input type="number" id="sched-hpd" min="1" step="0.5" /> <span class="unit">小时</span></label>
+      <span class="settings-label">提前完成缓冲：</span>
+      <label><input type="number" id="sched-buffer" min="0" max="60" step="1" /> <span class="unit">个工作日</span></label>
+      <span class="settings-label">年假：</span>
+      <label><input type="number" id="sched-al" min="0" max="100" step="1" /> <span class="unit">天/人·年（均摊扣产能）</span></label>
+      <span class="settings-label">工作日：<b>周一至周五</b>（周末不排活）</span>
+      <button class="btn primary" id="sched-run">▶ 生成排程</button>
+      <button class="btn" id="sched-export">📤 导出报告 .xlsx</button>
+    </div>
+    <div class="section-title" style="margin-top:4px">① 确认每张订单的交期（= 提交时间，可在此修改）</div>
+    <div class="table-wrap" id="sched-inputs"></div>
+    <div id="sched-out"></div>
+  </section>
+
+  <!-- ============ RETROSPECTIVE ============ -->
+  <section class="panel" id="panel-retro">
+    <div class="panel-head">
+      <h2>复盘 Retrospective</h2>
+      <p class="hint">复盘只分析<b>已完成</b>的订单（填了「实际完成日期」的），范围 = 最早创建日期 → 今天；未完成的活在「排期」页。给出真实交付表现（准时率/迟交）、完成速度分布，以及<b>不增加人手</b>的改进办法（培训现有工人）。数据越完整越准。</p>
+    </div>
+    <div class="settings-bar" id="retro-controls">
+      <span class="settings-label">每人每日工时：</span>
+      <label><input type="number" id="retro-hpd" min="1" step="0.5" /> <span class="unit">小时</span></label>
+      <span class="settings-label">工作日：<b>周一至周五</b></span>
+      <button class="btn primary" id="retro-run">▶ 复盘分析</button>
+      <button class="btn" id="retro-report">📤 导出报告 .xlsx</button>
+      <span class="settings-hint">日历日期换算成工作日时只计周一至周五（周末不计）。</span>
+    </div>
+    <div class="section-title" style="margin-top:4px">① 录入每张订单的实际完成日期</div>
+    <div class="toolbar">
+      <button class="btn primary" id="retro-import">📥 导入复盘 Excel</button>
+      <button class="btn" id="retro-export">📤 下载复盘 Excel / 模板</button>
+      <input type="file" id="retro-file" accept=".xlsx,.xls" hidden />
+      <span class="settings-hint">严格按<b>列序</b>读取（忽略表头文字，跳过第 1 行）：<b>列1</b>=产品类型 · <b>列2</b>=所需零件（名×N、…）· <b>列3</b>=提交时间 · <b>列4</b>=实际完成日期（YYYY-MM-DD）。</span>
+    </div>
+    <div class="table-wrap" id="retro-inputs"></div>
+    <div id="retro-out"></div>
+  </section>
+
+  <!-- ============ HOURLOG (hour-report 工时台账) ============ -->
+  <section class="panel" id="panel-hourlog">
+    <div class="panel-head">
+      <h2>工时台账 Hours（来自 hour-report）</h2>
+      <p class="hint">导入 hour-report 在 Task Totals 页导出的 <code>HourReport_{年}_Analysis.xlsx</code>（<code>TeamBreakdown_{年}_{队}.xlsx</code> 也可），查看每位工人全年<b>实际报工</b>：总工时、订单设计/校对、加班、请假，并按「排期」同一产能口径估算利用率。按工作表 <code>Data (long)</code> 自动识别——拖进「导入/导出」页也一样。数据 100% 本地处理。</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="hourlog-import">📥 导入 HourReport .xlsx</button>
+      <button class="btn" id="hourlog-export">📤 导出报告 .xlsx</button>
+      <span class="spacer"></span>
+      <button class="btn ghost danger" id="hourlog-clear">清除台账</button>
+    </div>
+    <div id="hourlog-out"></div>
+  </section>
+</main>
+
+<!-- Modal: bulk text input -->
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal">
+    <h3 id="modal-title">批量输入</h3>
+    <p class="hint" id="modal-hint"></p>
+    <textarea id="modal-text" rows="12" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="modal-cancel">取消</button>
+      <button class="btn primary" id="modal-ok">导入</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="analysis.js?v=52"></script>
+<script src="app.js?v=52"></script>
+</body>
+</html>
