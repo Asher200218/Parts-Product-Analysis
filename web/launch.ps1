@@ -32,8 +32,8 @@ $listener.Prefixes.Add($prefix)
 try {
     $listener.Start()
 } catch {
-    Write-Host "无法启动本地服务器 / Could not start local server: $($_.Exception.Message)"
-    Read-Host "按回车关闭 / Press Enter to close"
+    Write-Host "Could not start local server: $($_.Exception.Message)"
+    Read-Host "Press Enter to close"
     exit 1
 }
 
@@ -52,7 +52,7 @@ Start-Process $prefix | Out-Null
 
 Write-Host "------------------------------------------------------------"
 Write-Host "  Parts Analysis is running:  $prefix"
-Write-Host "  零件分析录入网页正在运行。关闭此窗口即可停止。"
+Write-Host "  Parts Analysis is running. Close this window to stop."
 Write-Host "  Close this window to stop the server."
 Write-Host "------------------------------------------------------------"
 

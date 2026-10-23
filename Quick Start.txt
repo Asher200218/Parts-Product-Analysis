@@ -1,0 +1,10 @@
+Parts / Products / Workers Analysis - Quick Start
+
+1. Copy the whole folder to a local disk on the Windows PC.
+2. Double-click "Parts Analysis.exe".
+   If a blue SmartScreen message appears: click "More info" -> "Run anyway".
+3. Keep the small black window open; the browser opens http://localhost:4173 automatically.
+   Close the black window when you are done. Your data is not lost (it is stored in the browser).
+
+For a full description of every feature, double-click "User Guide.html".
+If the exe will not open, double-click "Start without exe.bat".

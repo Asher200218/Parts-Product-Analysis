@@ -1,87 +1,46 @@
-# 数据录入网页 · Parts-Analysis Input (100% 本地)
+# web/ — the Parts Analysis app
 
-一个**完全本地**的网页，用来批量录入**产品 / 零件 / 工人能力 / 订单**，支持
-**导入 / 导出 Excel**。导出的文件与上一级的 `analyze.py` 完全兼容——录完数据点
-导出，把文件放进 `parts-analysis/data/`，再跑 `python analyze.py` 即可。
+The static web app itself: `index.html`, `app.js` (UI, import/export, rendering), `analysis.js` (calculations), `styles.css`, and the bundled SheetJS parser in `vendor/`. Everything runs in the browser; data is stored in localStorage. There are no network requests.
 
-> 🔒 隐私：所有数据只存在你浏览器的 localStorage 里，**不联网、不上传**。
-> Excel 解析用的是本地自带的 `vendor/xlsx.full.min.js`，断网也能用。
+## Running it
 
-## 一键启动 · One-click launch（推荐）
+It must be served over `http://localhost` (not opened as `file://`, where some browsers disable localStorage):
 
-双击启动器：它会在本机起一个小服务器并自动打开浏览器。**关闭弹出的黑窗口/终端即可停止。**
-
-| 系统 | 双击这个文件 | 说明 |
-|---|---|---|
-| **macOS** | `launch-mac.command` | 直接可用，无需安装。首次双击若提示「未验证的开发者」，右键 → 打开。需要 Python 3（你机器上已有）。 |
-| **Windows** | `launch-windows.bat` | 直接可用，**无需安装任何东西**。有 Python 就用 Python，没有就用 Windows 自带的 PowerShell 起服务器。 |
-| **Windows (.exe)** | `Parts Analysis.exe` | 真正的 exe，需先在 Windows 上构建一次（见下）。构建后双击即用，目标机无需 Python。 |
-
-> 启动器只监听 `localhost`，不对外暴露、不联网。
-
-### 在 Windows 上生成 `Parts Analysis.exe`（一次性）
-
-把整个 `web` 文件夹拷到 Windows，右键 `build-windows-exe.ps1` → **使用 PowerShell 运行**。
-它会用 `ps2exe` 把 `launch.ps1` 打包成 `Parts Analysis.exe`（放在同一文件夹）。
-之后双击该 exe 即可启动网页，**运行时不需要 Python、也不需要联网**。
-> 构建那一步会从 PowerShell 库下载 `ps2exe` 工具（下载的是代码，不是你的数据）。
-> 不想构建 exe 也行：直接双击 `launch-windows.bat` 效果一样。
-
-## 其它打开方式
-
-**手动起服务器**（任何系统，最稳）：
-```bash
-cd parts-analysis/web
-python3 -m http.server 4173      # 浏览器打开 http://localhost:4173
-```
-
-> 不建议直接双击 `index.html`（`file://` 方式）：Safari 会在 `file://` 下禁用
-> localStorage，导致数据存不住。用上面的启动器（`http://localhost`）最稳妥。
-
-## 功能
-
-| 标签 | 作用 |
+| How | Notes |
 |---|---|
-| **产品** | 增删改产品名；重命名/删除会自动同步「工人能力」的列和「订单」的引用 |
-| **零件** | 表格录入：零件名称 + 耗时等级。**每个等级的单件工时可自定义**（如把 高 从 4h 改成 5h）；默认 高=4h / 低=2h / 无=0.25h。支持「从 Excel 复制粘贴」 |
-| **工人能力** | 能力分**设计**与**校验**两道：工人 × 产品，每个产品两格分别填**设计**/**校验**等级（A/B/C，留空=不做这道）。只会校验的工人就把设计留空。每个零件都要先设计后校验，各按难度工时计（高=设计4h+校验4h）。支持粘贴整块矩阵 |
-| **订单** | 产品类型 + 所需零件 + 提交时间。零件用 `、` `;` 或换行分隔，数量 `×N`，可带 `编号:` 前缀 |
-| **导入/导出** | 拖入 `parts.xlsx`/`workers.xlsx`/`orders.xlsx`/`products.json` 自动识别；一键导出全部；整体备份/恢复 |
-| **分析** | 与 `analyze.py` **相同算法**直接在浏览器里算：精确最短可能工期（Hall/子集下界）、瓶颈、招聘/培训建议+敏感度、各产品/零件需求、逐日排产与每日负载 |
-| **排期** | 活儿按**交期**来（如 10/1 交两单、10/8 交三单）。把订单的**提交时间当作交期**，从**开工日期**起按团队产能排两种方案并画时间线：**① 延续叠加**（满负荷提前做完、后段空窗）与 **② 按时间需求填空**（按各交期节奏摊匀、天天有活不空窗）。可设开工日期 / 每人每日工时 / 每周工作天数 |
-| **复盘** | 输入每张历史订单的**实际完成日期**，对比当时是否达到最优产出；给出**不加人**的改进（重新排程能省多少、培训哪位现有工人）、每位工人的投入/闲置、迟于最优的订单。可设**每人每日工时**与**每周工作天数**；支持**导入/导出复盘 Excel**（严格列序） |
+| `../Parts Analysis.exe` | Windows. This folder is built into the exe; serves on port 4173 and opens the browser. |
+| `launch-windows.bat` | Windows, no install needed: uses Python if present, otherwise PowerShell (`launch.ps1`). |
+| `launch-mac.command` | macOS, needs Python 3. Right-click → Open the first time. |
+| `python3 -m http.server 4173` | Any OS, run from this folder. |
 
-## 批量录入的三种方式
+Keep using port 4173: browser data is tied to the address, so a different port shows an empty app.
 
-1. **导入现有 Excel** — 「导入/导出」标签里拖文件进去（覆盖或合并）。
-2. **从 Excel 复制粘贴** — 在 Excel 选中区域 Ctrl/Cmd+C，点各标签的「粘贴导入」，粘进去。
-3. **手动逐行** — 点「+ 添加行/工人/订单」，直接在表格里打字。
+`build-windows-exe.ps1` is an alternative way to make an exe (wraps `launch.ps1` with ps2exe; run it on Windows). The exe shipped in the repo root is built from `../main.go` instead.
 
-## 与 analyze.py 对接
+## Excel formats
 
-「导入/导出 → 一键导出全部」会下载 4 个文件：
-`parts.xlsx` `workers.xlsx` `orders.xlsx` `products.json`。
-把它们放进 `parts-analysis/data/`，然后：
-```bash
-cd parts-analysis
-.venv/bin/python analyze.py   # 生成 output/analysis_report.xlsx
-```
+Exports (`parts.xlsx`, `workers.xlsx`, `orders.xlsx`, `products.json`):
 
-> **自定义工时**：若你在「零件」页改过某个等级的单件工时，导出的 `parts.xlsx` 会
-> 多一列 `单件工时`，`analyze.py` 会优先按此列计算（无需改 `analyze.py` 的 CONFIG）。
-> 未改动时仍是原来的两列格式。
+- `parts.xlsx` → sheet `Parts`, header `Part name | Difficulty (High/Low/None)`, plus `Hours per piece (h)` if you customized hours per difficulty
+- `workers.xlsx` → sheet `Worker abilities`, header `Worker name | <product1>·Design | <product1>·Check | <product2>·Design | …`
+- `orders.xlsx` → sheet `Orders`, header `Product type | Parts needed | Submitted`
 
-导出的工作表名、表头、分隔符都与 `analyze.py` 一致：
-- `parts.xlsx` → 表 `零件清单`，表头 `零件名称 | 耗时等级(高/低/无)`
-- `workers.xlsx` → 表 `工人能力`，表头 `工人姓名 | <产品1>·设计 | <产品1>·校验 | <产品2>·设计 | …`（每产品两列；旧的单列文件仍可导入，会当作设计+校验同等级）
-- `orders.xlsx` → 表 `订单明细`，表头 `产品类型 | 所需零件(...) | 提交时间(...)`
+Importers also accept the older Chinese sheet names, headers (e.g. `零件名称`, `工人姓名`, `产品类型`, `产品·设计`/`产品·校验`) and difficulty values (`高/低/无`).
 
-### 复盘 Excel（严格列序，4 列）
+The **Parts** tab's "Import parts.xlsx" button reads by position: column 1 = VC code, column 8 = repeat design hours (t7), column 9 = first-order design hours (t8).
 
-「复盘」标签的「导入/下载复盘 Excel」用固定列序读取，**忽略表头文字、跳过第 1 行**：
+The **Orders** tab's "Import orders.xlsx" button finds the header row automatically and shows a column-mapping dialog. It recognizes English and Chinese keywords such as Sales Order, Item, VC, Designer, Checker, Product, Required/Due, Create On and Actual Finish.
 
-| 列1 | 列2 | 列3 | 列4 |
+### Retrospective Excel (strict column order, 4 columns)
+
+The header text is ignored and row 1 is skipped:
+
+| Col 1 | Col 2 | Col 3 | Col 4 |
 |---|---|---|---|
-| 产品类型 | 所需零件（`名×N、…`） | 提交时间 `YYYY-MM-DD` | 实际完成日期 `YYYY-MM-DD` |
+| Product type | Parts needed (`name×N; …`) | Submitted `YYYY-MM-DD` | Actual finish date `YYYY-MM-DD` |
 
-日期列可填文本 `2025-01-06`、也可是 Excel 真正的日期格。先「下载复盘 Excel / 模板」拿到样板，填好后再「导入」即可。
+Date columns can be text like `2025-01-06` or real Excel dates. Use "Download retrospective Excel / template" to get a sample.
+
+### Hour log
+
+`HourReport_{year}_Analysis.xlsx` from hour-report is detected by its `Data (long)` sheet. The hour-report export names tasks in Chinese; `订单设计`, `订单校对` and `加班` are mapped to *Order design*, *Order check* and *Overtime*.

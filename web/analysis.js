@@ -1,11 +1,11 @@
 /* analysis.js — in-browser engine (VC-time model, role-aware).
-   • Each part = a VC (3-digit code) with a 难度 (高/低/无, for worker eligibility),
-     重复设计工时 t7, 首单设计工时 t8.
-   • Per (product, VC): the chronologically earliest order (by 创建日期) uses t8
-     (首单); later ones use t7 (重复). t8 blank → use t7. Any value 0 → 0.03.
-   • Order 设计 = (Σ its VC times) × coeff(VC数: ≤5→1, 6–10→1.2, >10→1.5).
-     Order 校对 = 设计 × VERIFY_RATIO (默认 0.3，可由工时台账实际值校准).   (precedence: 设计 → 校对)
-   • Two views: ① 按指派 (fixed 设计/校对 worker per order)  ② 什么-if (optimal).
+    • Each part = a VC (3-digit code) with a difficulty (High/Low/None, for worker eligibility),
+      repeat design hours t7, first-order design hours t8.
+    • Per (product, VC): the chronologically earliest order (by created date) uses t8
+      (first order); later ones use t7 (repeat). t8 blank → use t7. Any value 0 → 0.03.
+    • Order design = (Σ its VC times) × coeff(VC count: ≤5→1, 6–10→1.2, >10→1.5).
+      Order check = design × VERIFY_RATIO (default 0.3, can be calibrated from the hour log).   (precedence: design → check)
+    • Two views: ① as assigned (fixed design/check worker per order)  ② what-if (optimal).
    Relies on app.js globals: CATEGORIES, ABILITY_SKILLS, GRADE_RANK, HOURS_PER_DAY,
    ROLES, ROLE_LABEL, clean, normGrade, normCategory, normDate, parseOrderParts. */
 'use strict';
@@ -13,10 +13,10 @@
 const MAX_EXACT_GROUPS = 22;
 const MAX_SIM_DAYS = 3650;
 const GRADE_RANK = { A: 3, B: 2, C: 1 };
-const DIFF_RANK = { '高': 3, '低': 2, '无': 1 };
-const SPECIAL_VC = { '999': 0.08 };   // 特殊 VC 码 -> 固定设计工时 (小时)
-const WORKDAYS_PER_WEEK = 5;          // 工作日固定 = 周一至周五（周末不计工时/排程）
-// 设计/校对工人为这些占位值 -> 整张订单作废 (不纳入任何分析)
+const DIFF_RANK = { 'High': 3, 'Low': 2, 'None': 1 };
+const SPECIAL_VC = { '999': 0.08 };   // special VC code -> fixed design hours
+const WORKDAYS_PER_WEEK = 5;          // workdays are fixed = Monday–Friday (weekends carry no hours/scheduling)
+// design/check worker set to one of these placeholders -> the whole order is void (excluded from all analysis)
 const SKIP_WORKERS = new Set(['special order', 'order canceled', 'order cancelled', 'null']);
 function isSkipWorker(name){ return SKIP_WORKERS.has(String(name || '').trim().toLowerCase()); }
 
@@ -34,14 +34,14 @@ function workerBestRank(w){
   return r;
 }
 function upgradeGrade(g){ return ({ C:'B', B:'A' })[g] || null; }
-function neededGrade(cat){ return cat === '高' ? 'A' : (cat === '低' ? 'B' : 'C'); }
+function neededGrade(cat){ return cat === 'High' ? 'A' : (cat === 'Low' ? 'B' : 'C'); }
 function catIndex(c){ return CATEGORIES.indexOf(c); }
 function gkey(g){ return g.prod + '¦' + g.cat + '¦' + g.role; }
 function numOrNull(v){ if (v == null || String(v).trim() === '') return null; const n = Number(v); return isNaN(n) ? null : n; }
 function parseISO(s){ if (!s) return null; const m = String(s).match(/(\d{4})-(\d{1,2})-(\d{1,2})/); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; }
 const DAY_MS = 86400000;
 function diffDays(a, b){ return Math.round((a - b) / DAY_MS); }
-// a→b 之间经过的工作日数（只数周一至周五；同一天=0）
+// number of workdays elapsed between a→b (Mon–Fri only; same day = 0)
 function businessDaysBetween(a, b){
   const days = diffDays(b, a); if (days <= 0) return 0;
   let n = Math.floor(days / 7) * 5;
@@ -62,7 +62,7 @@ function buildAnalysisInputs(state){
     partMap.set(code, { category: normCategory(p.category), t7: numOrNull(p.t7), t8: numOrNull(p.t8) });
   });
 
-  // workers (设计/校验 grades). Keep workers even with NO grades filled in — the ① 按指派
+  // workers (design/check grades). Keep workers even with NO grades filled in — the ① as-assigned
   // view needs them (times come from the VC table, not from ability); grades only power the
   // capability check + the ② what-if.  `graded` = has at least one A/B/C.
   const workers = [];
@@ -84,26 +84,26 @@ function buildAnalysisInputs(state){
     seq++;
     const product = clean(o.product);
     const designer = clean(o.designer), checker = clean(o.checker);
-    // 设计/校对工人为 special order / order canceled / null -> 作废整张订单
+    // design/check worker is special order / order canceled / null -> void the whole order
     if (isSkipWorker(designer) || isSkipWorker(checker)){ skipped++; return; }
     const vcs = parseOrderParts(o.parts).map(x => x.name).filter(Boolean);
     if (!product && !vcs.length) return;
     // any VC not yet known -> add as a blank VC (will get the 0.03 fallback)
     vcs.forEach(c => { if (!partMap.has(c)) partMap.set(c, { category:'', t7:null, t8:null }); });
-    orders.push({ id:`订单${seq}`, srcIndex: idx, product, vcs, so: clean(o.so),
+    orders.push({ id:`Order${seq}`, srcIndex: idx, product, vcs, so: clean(o.so),
       created: clean(o.time), deadline: clean(o.required),
       designer, checker, actualFinish: clean(o.actualFinish) });
   });
-  if (skipped) warnings.push(`已作废 ${skipped} 张订单 (设计/校对工人为 special order / order canceled / null)`);
+  if (skipped) warnings.push(`Voided ${skipped} orders (design/check worker is special order / order canceled / null)`);
 
   computeOrderTimes(orders, partMap);
 
   return { productNames, partMap, nPartsTotal: partMap.size, workers, workerByName, orders, errors, warnings };
 }
 
-/* ---------- VC time computation (first-time vs repeat, coefficient, 校对=设计×VERIFY_RATIO) ---------- */
+/* ---------- VC time computation (first-time vs repeat, coefficient, check = design × VERIFY_RATIO) ---------- */
 function computeOrderTimes(orders, partMap){
-  // chronological order by 创建日期 (blank dates last, stable)
+  // chronological order by created date (blank dates last, stable)
   const order = orders.map((_, i) => i);
   const tval = o => { const d = parseISO(o.created); return d ? d.getTime() : Infinity; };
   order.sort((a, b) => (tval(orders[a]) - tval(orders[b])) || (a - b));
@@ -120,11 +120,11 @@ function computeOrderTimes(orders, partMap){
       const p = partMap.get(vc) || { t7:null, t8:null, category:'' };
       const first = !!firstFlag[i][vc];
       let t;
-      if (SPECIAL_VC[vc] != null) t = SPECIAL_VC[vc];        // 999 等特殊码: 固定工时
+      if (SPECIAL_VC[vc] != null) t = SPECIAL_VC[vc];        // special codes like 999: fixed hours
       else {
-        t = first ? (p.t8 != null ? p.t8 : p.t7) : p.t7;    // 首单用 t8(无则 t7); 重复用 t7
+        t = first ? (p.t8 != null ? p.t8 : p.t7) : p.t7;    // first order uses t8 (t7 if blank); repeats use t7
         if (t == null) t = 0;
-        if (t === 0) t = 0.03;                               // 0 → 基本时间 0.03
+        if (t === 0) t = 0.03;                               // 0 → base time 0.03
       }
       base += t; detail.push({ vc, time: t, first });
     });
@@ -132,16 +132,16 @@ function computeOrderTimes(orders, partMap){
     const coeff = nv <= 5 ? 1 : (nv <= 10 ? 1.2 : 1.5);
     o.nVcs = nv; o.coeff = coeff; o.vcDetail = detail;
     o.designHours = base * coeff;
-    o.verifyHours = o.designHours * (typeof VERIFY_RATIO !== 'undefined' ? VERIFY_RATIO : 0.3);   // 校对系数可由工时台账校准
+    o.verifyHours = o.designHours * (typeof VERIFY_RATIO !== 'undefined' ? VERIFY_RATIO : 0.3);   // check ratio can be calibrated from the hour log
     o.total = o.designHours + o.verifyHours;
-    // order difficulty = hardest VC difficulty (blank VC → 无)
-    let diff = '无', rank = 0;
-    o.vcs.forEach(vc => { const c = (partMap.get(vc) || {}).category; const cc = CATEGORIES.includes(c) ? c : '无'; if (DIFF_RANK[cc] > rank){ rank = DIFF_RANK[cc]; diff = cc; } });
+    // order difficulty = hardest VC difficulty (blank VC → None)
+    let diff = 'None', rank = 0;
+    o.vcs.forEach(vc => { const c = (partMap.get(vc) || {}).category; const cc = CATEGORIES.includes(c) ? c : 'None'; if (DIFF_RANK[cc] > rank){ rank = DIFF_RANK[cc]; diff = cc; } });
     o.difficulty = diff;
   });
 }
 
-/* ---------- what-if groups: order 设计/校对 hours bucketed by (product, 难度, role) ---------- */
+/* ---------- what-if groups: order design/check hours bucketed by (product, difficulty, role) ---------- */
 function buildGroups(orders){
   const map = new Map();
   orders.forEach(o => {
@@ -183,26 +183,26 @@ function minMakespan(items, workers, longestUnit = 0){
 }
 
 function formatDuration(hours){
-  if (hours === null) return '不可完成 infeasible';
+  if (hours === null) return 'infeasible';
   const days = hours / HOURS_PER_DAY, whole = Math.floor(days), rem = hours - whole * HOURS_PER_DAY;
-  return `${hours.toFixed(1)} 工时/人 ≈ ${days.toFixed(2)} 个工作日 (${whole}天${rem.toFixed(1)}小时)`;
+  return `${hours.toFixed(1)} h/person ≈ ${days.toFixed(2)} workdays (${whole}d ${rem.toFixed(1)}h)`;
 }
 function describeBinding(binding, workers, infeasible){
   if (infeasible && infeasible.length)
-    return `无法完成: ${infeasible.map(g=>`${g.prod}的${g.cat}难度(${roleName(g.role)})`).join('、')} 没有任何工人能做`;
-  if (!binding.length) return '无明显瓶颈';
+    return `Infeasible: no worker can do ${infeasible.map(g=>`${g.prod} ${g.cat} difficulty (${roleName(g.role)})`).join(', ')}`;
+  if (!binding.length) return 'No clear bottleneck';
   const prods = [...new Set(binding.map(b=>b.prod))].sort();
   const cats = [...new Set(binding.map(b=>b.cat))].sort((a,b)=>catIndex(a)-catIndex(b));
   const roles = [...new Set(binding.map(b=>b.role))].map(roleName);
   const elig = workers.filter(w => binding.some(g => workerCan(w,g.prod,g.cat,g.role))).length;
-  return `${prods.join('/')} 的 ${cats.join('/')} 难度（${roles.join('/')}）(仅 ${elig} 人可做)`;
+  return `${prods.join('/')} ${cats.join('/')} difficulty (${roles.join('/')}) (only ${elig} can do it)`;
 }
 function bindingEnd(binding){
-  if (!binding.length) return '无';
+  if (!binding.length) return 'None';
   const cats = new Set(binding.map(b=>b.cat));
-  if (cats.has('高')) return '高端(A级)';
-  if (cats.size === 1 && cats.has('无')) return '低端(C级也可)';
-  return '中端(B级)';
+  if (cats.has('High')) return 'High-end (grade A)';
+  if (cats.size === 1 && cats.has('None')) return 'Low-end (grade C is fine)';
+  return 'Mid-range (grade B)';
 }
 function unblockSuggestions(infeasible, workers){
   return infeasible.map(g => {
@@ -220,7 +220,7 @@ function feasibleMinMakespan(items, workers, longestUnit, infeasible){
 
 /* ---------- improvement: train / hire / reassign (role-aware) ---------- */
 function cloneWorkers(workers){ return workers.map(w => ({ name: w.name, grades: Object.fromEntries(Object.entries(w.grades).map(([p,g]) => [p, { ...g }])) })); }
-function hiredWorker(product, role, grade){ return { name:`(新招 ${product}-${roleName(role)}${grade})`, grades:{ [product]: role==='d'?{d:grade,v:''}:{d:'',v:grade} } }; }
+function hiredWorker(product, role, grade){ return { name:`(new hire ${product}-${roleName(role)}${grade})`, grades:{ [product]: role==='d'?{d:grade,v:''}:{d:'',v:grade} } }; }
 function improvementAnalysis(items, workers, longestUnit){
   const base = minMakespan(items, workers, longestUnit);
   const levers = [];
@@ -231,10 +231,10 @@ function improvementAnalysis(items, workers, longestUnit){
   pairs.forEach(pr => {
     const nw = workers.concat([hiredWorker(pr.prod, pr.role, pr.need)]);
     const h = minMakespan(items, nw, longestUnit).hours;
-    levers.push({ label:`招聘1名 ${pr.prod} 的 ${pr.need}级 ${roleName(pr.role)}工`, kind:'hire', cost: 3.0 + (3 - GRADE_RANK[pr.need]) * 0.1, hours: h, saved: base.hours - h });
+    levers.push({ label:`Hire 1 grade-${pr.need} ${roleName(pr.role)} worker for ${pr.prod}`, kind:'hire', cost: 3.0 + (3 - GRADE_RANK[pr.need]) * 0.1, hours: h, saved: base.hours - h });
   });
   // training: any worker with the same (product, role, currentGrade) gives the identical result,
-  // so test only ONE representative per key (keeps this O(pairs×grades), scalable to 万级 workers)
+  // so test only ONE representative per key (keeps this O(pairs×grades), scalable to tens of thousands of workers)
   const seenTrain = new Set();
   for (const w of workers) for (const pr of pairs){
     const cur = roleGrade(w, pr.prod, pr.role); const up = upgradeGrade(cur); if (!up) continue;
@@ -242,7 +242,7 @@ function improvementAnalysis(items, workers, longestUnit){
     const nw = workers.map(x => { if (x.name !== w.name) return x;   // reuse refs; deep-copy only this worker
       const g2 = { ...x.grades, [pr.prod]: { ...(x.grades[pr.prod] || { d:'', v:'' }) } }; g2[pr.prod][pr.role] = up; return { name:x.name, grades:g2 }; });
     const h = minMakespan(items, nw, longestUnit).hours;
-    if (base.hours - h > 1e-9) levers.push({ label:`培训 ${w.name}: ${pr.prod} ${roleName(pr.role)} ${cur}→${up}`, kind:'train', cost:2.0, hours:h, saved: base.hours - h });
+    if (base.hours - h > 1e-9) levers.push({ label:`Train ${w.name}: ${pr.prod} ${roleName(pr.role)} ${cur}→${up}`, kind:'train', cost:2.0, hours:h, saved: base.hours - h });
   }
   return { base, levers };
 }
@@ -253,7 +253,7 @@ function hireSensitivity(items, workers, longestUnit, product, role, grade, maxA
   return out;
 }
 
-/* ---------- what-if greedy schedule (optimal assignment, order-level 设计→校对) ---------- */
+/* ---------- what-if greedy schedule (optimal assignment, order-level design→check) ---------- */
 function schedKey(o){ return o.deadline ? [0, o.deadline, o.id] : [1, o.created || '', o.id]; }
 function cmpKey(a, b){ for (let i=0;i<a.length;i++){ if (a[i]<b[i]) return -1; if (a[i]>b[i]) return 1; } return 0; }
 function simulate(orders, workers){
@@ -273,7 +273,7 @@ function simulate(orders, workers){
   const daily = []; const allocations = []; let stuck = []; let day = 0;
   const totalCapacity = workers.length * HOURS_PER_DAY;
   while (tasks.some(t => t.remaining > 1e-9) && day < MAX_SIM_DAYS){
-    day++; const used = { 高:0, 低:0, 无:0 }; let progress = 0;
+    day++; const used = { High:0, Low:0, None:0 }; let progress = 0;
     for (const worker of simWorkers){
       let capacity = HOURS_PER_DAY;
       for (const cat of CATEGORIES) for (const role of ROLES){
@@ -290,7 +290,7 @@ function simulate(orders, workers){
         if (capacity <= 1e-9) break;
       }
     }
-    used.total = used.高 + used.低 + used.无; daily.push(used);
+    used.total = used.High + used.Low + used.None; daily.push(used);
     if (progress <= 1e-9){
       const s = new Map(); tasks.forEach(t => { if (t.remaining > 1e-9){ const g = { prod:t.product, cat:t.cat, role:t.role }; s.set(gkey(g), g); } });
       stuck = [...s.values()]; day--; daily.pop(); break;
@@ -299,7 +299,7 @@ function simulate(orders, workers){
   return { orderSequence: orderIds, completion, days: day, daily, totalCapacity, allocations, stuck, unfinishedHours: tasks.reduce((a,t)=>a+t.remaining, 0) };
 }
 
-/* ---------- as-assigned view: fixed 设计/校对 per order ---------- */
+/* ---------- as-assigned view: fixed design/check per order ---------- */
 function runAsAssigned(orders, workerByName, H, wpw){
   // capability: if the worker has NO grade for this (product,role) we treat it as UNKNOWN and
   // don't flag (they were assigned, and we may just lack ability data). Only flag a grade that's
@@ -350,7 +350,7 @@ function runAsAssigned(orders, workerByName, H, wpw){
 function summarizeOrders(orders){
   const out = {};
   orders.forEach(o => { out[o.id] = { product:o.product, due:o.created, deadline:o.deadline, total:o.total,
-    design:o.designHours, verify:o.verifyHours, hours:{高:0,低:0,无:0}, partsTxt:o.vcs.join('、') };
+    design:o.designHours, verify:o.verifyHours, hours:{High:0,Low:0,None:0}, partsTxt:o.vcs.join(', ') };
     out[o.id].hours[o.difficulty] = o.total; });
   return out;
 }
@@ -379,19 +379,19 @@ function runFullAnalysis(state){
   if (!result.hasData) return result;
 
   const groups = buildGroups(orders);
-  const demandByCat = { 高:0, 低:0, 无:0 };
+  const demandByCat = { High:0, Low:0, None:0 };
   groups.forEach(g => demandByCat[g.cat] += g.hours);
   const totalDesign = orders.reduce((a,o)=>a+o.designHours,0);
   const totalVerify = orders.reduce((a,o)=>a+o.verifyHours,0);
   const totalDemand = totalDesign + totalVerify;
-  const longestUnit = Math.max(0, ...orders.map(o => o.total));   // a single order's 设计+校对 chain
+  const longestUnit = Math.max(0, ...orders.map(o => o.total));   // a single order's design+check chain
 
   // what-if (optimal)
   const { base, levers } = improvementAnalysis(groups, workers, longestUnit);
   const minHours = base.hours, binding = base.binding, infeasible = base.infeasible;
   const bottleneckLabel = describeBinding(binding, workers, infeasible);
   const feasibleHours = minHours === null ? feasibleMinMakespan(groups, workers, longestUnit, infeasible) : null;
-  // greedy schedule is O(days×workers×tasks) — skip it on large data (only 复盘 uses it)
+  // greedy schedule is O(days×workers×tasks) — skip it on large data (only the retrospective uses it)
   const sim = (orders.length <= 800 && workers.length <= 200)
     ? simulate(orders, workers)
     : { orderSequence: orders.map(o=>o.id), completion:{}, days: minHours==null?0:Math.ceil(minHours/HOURS_PER_DAY),
@@ -400,12 +400,12 @@ function runFullAnalysis(state){
   let sensitivity = null;
   if (minHours !== null && binding.length){
     const bindCats = new Set(binding.map(x=>x.cat));
-    const grade = bindCats.has('高') ? 'A' : (bindCats.has('低') ? 'B' : 'C');
+    const grade = bindCats.has('High') ? 'A' : (bindCats.has('Low') ? 'B' : 'C');
     const first = binding.slice().sort((a,b)=>(a.prod<b.prod?-1:a.prod>b.prod?1:0)||(a.role<b.role?-1:a.role>b.role?1:0))[0];
     sensitivity = { product: first.prod, role: first.role, grade, rows: hireSensitivity(groups, workers, longestUnit, first.prod, first.role, grade, 6) };
   }
 
-  // as-assigned (fixed workers); 工作日固定 = 周一至周五
+  // as-assigned (fixed workers); workdays fixed = Monday–Friday
   const wpw = WORKDAYS_PER_WEEK;
   const asAssigned = runAsAssigned(orders, workerByName, HOURS_PER_DAY, wpw);
 
@@ -422,13 +422,13 @@ function runFullAnalysis(state){
 }
 
 /* ====================================================================
-   RETROSPECTIVE (uses 创建日期 as submit, 实际完成 as finish)
+   RETROSPECTIVE (uses created date as submit, actual finish as finish)
    ==================================================================== */
 function runRetrospective(state, opts){
   const wpw = WORKDAYS_PER_WEEK;
   const H = HOURS_PER_DAY;
-  // 复盘只看「已完成」的订单（填了实际完成日期）：范围 = 最早创建日期 → 今天。
-  // 未完成的订单归「排期」管，不参与复盘的任何统计（含基准工时、工人负载、④对比）。
+  // The retrospective only looks at COMPLETED orders (actual finish date filled in): range = earliest created date → today.
+  // Unfinished orders belong to the Schedule and are excluded from every retrospective stat (baseline hours, worker load, ④ comparison).
   const finishedOrders = (state.orders || []).filter(o => String(o.actualFinish || '').trim());
   const R = runFullAnalysis({ ...state, orders: finishedOrders });
   const out = { R, hasData: R.hasData, H, wpw,
@@ -439,29 +439,29 @@ function runRetrospective(state, opts){
   // benchmark = the AS-ASSIGNED schedule (given designer/checker), which scales & needs no greedy sim
   const A = R.asAssigned;
   const expById = new Map(A.rows.map(r => [r.id, Math.max(1, Math.ceil(r.finishWD))]));   // expected completion (work-day)
-  const orders = R.orders.map(o => ({ id:o.id, so:o.so, product:o.product, partsTxt:o.vcs.join('、'),
+  const orders = R.orders.map(o => ({ id:o.id, so:o.so, product:o.product, partsTxt:o.vcs.join(', '),
     submit: parseISO(o.created), finish: parseISO(o.actualFinish), deadline: parseISO(o.deadline),
     simDay: expById.has(o.id) ? expById.get(o.id) : null, hours: o.total }));
   out.orders = orders; out.nOrders = orders.length;
   const withFinish = orders.filter(o => o.finish); out.nWithFinish = withFinish.length;
 
   out.infeasible = R.minHours === null;
-  out.optimumDays = out.infeasible ? null : R.minHours / H;   // 什么-if 理论下界（参考）
-  out.expectedDays = A.makespanDays;                          // 按指派应完成工期
+  out.optimumDays = out.infeasible ? null : R.minHours / H;   // what-if theoretical lower bound (reference)
+  out.expectedDays = A.makespanDays;                          // expected duration as assigned
   out.simDays = A.makespanDays; out.totalDemand = R.totalDemand; out.nWorkers = R.nWorkers;
 
-  // 每人可用工时 = 一年 260 个工作日 − 年假，× 每人每日工时（分母是"一年"，不是最忙者的工期）
+  // available hours per person = 260 workdays per year − annual leave, × hours per person per day (denominator is "one year", not the busiest worker's span)
   const AL = (state.settings && state.settings.annualLeave >= 0) ? +state.settings.annualLeave : 15;
   const cap = (260 - AL) * H;
   out.capYear = cap; out.annualLeave = AL;
   const loadByName = new Map(A.workerLoads.map(w => [w.name, w]));
-  // 优先用工时台账的实际报工（订单设计+订单校对）；没导台账时退回按指派的标准工时
+  // prefer actual logged hours from the hour log (order design + order check); fall back to as-assigned standard hours if no log imported
   const HLw = new Map(((state.hourlog && state.hourlog.workers) || []).map(w =>
-    [w.name, (w.byTask['订单设计'] || 0) + (w.byTask['订单校对'] || 0)]));
+    [w.name, (w.byTask['Order design'] || 0) + (w.byTask['Order check'] || 0)]));
   out.loadsAreActual = HLw.size > 0;
   out.workerLoads = (R.workers || []).map(w => {
     const L = loadByName.get(w.name);
-    const inHL = HLw.has(w.name);                       // 台账里有没有这个名字（对账标色用）
+    const inHL = HLw.has(w.name);                       // is this name in the hour log? (for reconciliation colors)
     const hrs = out.loadsAreActual ? (HLw.get(w.name) || 0) : (L ? L.total : 0);
     const gap = (R.binding || []).find(g => !workerCan(w, g.prod, g.cat, g.role));
     return { name: w.name, hours: hrs, idle: Math.max(0, cap - hrs), util: cap > 0 ? hrs / cap : 0, inHL,
@@ -480,10 +480,10 @@ function runRetrospective(state, opts){
   out.start = start;
   const calToWork = cal => Math.max(1, Math.round(cal * wpw / 7));
   withFinish.forEach(o => { o.leadCalDays = diffDays(o.finish, o.submit || start); o.actualWorkDay = calToWork(Math.max(0, diffDays(o.finish, start)) + 1); o.slack = (o.simDay != null) ? (o.actualWorkDay - o.simDay) : null;
-    // 按单自身的日历口径（不受其他订单/全局锚点影响）
-    o.turnaroundCal = o.submit ? Math.max(0, diffDays(o.finish, o.submit)) : null;   // 实际用时 = 实际完成 − 创建
-    o.lateCal = o.deadline ? diffDays(o.finish, o.deadline) : null;                  // 迟交 = 实际完成 − 交付 (>0 才算迟)
-    // 理论 vs 实际（逐单，工作日口径）：理论 = 该单设计+校对连续做完；实际 = 创建→完成之间的周一至周五天数
+    // per order, on its own calendar (not affected by other orders / a global anchor)
+    o.turnaroundCal = o.submit ? Math.max(0, diffDays(o.finish, o.submit)) : null;   // actual duration = actual finish − created
+    o.lateCal = o.deadline ? diffDays(o.finish, o.deadline) : null;                  // lateness = actual finish − due (late only if > 0)
+    // theory vs actual (per order, in workdays): theory = this order's design+check done back to back; actual = Mon–Fri days between created → finished
     o.theoWD = o.hours / H;
     o.turnWD = o.submit ? businessDaysBetween(o.submit, o.finish) : null;
   });
@@ -494,11 +494,11 @@ function runRetrospective(state, opts){
   out.utilActual = out.availableActual > 0 ? R.totalDemand / out.availableActual : 0;
   out.idleActual = Math.max(0, out.availableActual - R.totalDemand);
   out.lateOrders = withFinish.filter(o => o.slack != null && o.slack > 0).sort((a, b) => b.slack - a.slack);
-  // 真实迟交（实际完成晚于交付日期），按迟交天数降序 —— 复盘表用这个
+  // truly late orders (actual finish after due date), sorted by days late desc — used by the retrospective table
   out.lateVsDeadline = withFinish.filter(o => o.lateCal != null && o.lateCal > 0)
     .sort((a, b) => (b.lateCal - a.lateCal) || (a.id < b.id ? -1 : 1));
   out.nWithDeadline = withFinish.filter(o => o.deadline).length;
-  // 真实交付口径（按每张单自身的日历天，不用全局锚点）：准时率 / 迟交单数 / 中位实际用时 / 最长迟交
+  // real delivery metrics (each order on its own calendar days, no global anchor): on-time rate / late count / median turnaround / longest delay
   const median = arr => { if (!arr.length) return null; const s = arr.slice().sort((a,b)=>a-b); const m = s.length >> 1;
     return s.length % 2 ? s[m] : Math.round((s[m-1] + s[m]) / 2); };
   out.nLate = out.lateVsDeadline.length;
@@ -507,18 +507,18 @@ function runRetrospective(state, opts){
   out.medianTurnaround = median(withFinish.map(o => o.turnaroundCal).filter(v => v != null));
   out.maxLate = out.lateVsDeadline.length ? out.lateVsDeadline[0].lateCal : 0;
   out.medianLate = median(out.lateVsDeadline.map(o => o.lateCal));
-  // 完成速度（逐单，工作日）。经过时间不能加总（订单并行，同一天会被每张在途单重复计），
-  // 所以用直观表达：「X% 的单 ≤ N 个工作日完成」+ 区间分布；只有纯工时（总工作量）可以加总。
+  // completion speed (per order, workdays). Elapsed times can't be summed (orders run in parallel, the same day counts for every open order),
+  // so express it intuitively: "X% of orders finish in ≤ N workdays" + a bucket distribution; only pure hours (total workload) can be summed.
   const withBoth = withFinish.filter(o => o.turnWD != null);
   out.nTheo = withBoth.length;
-  out.theoSumWD = withBoth.reduce((a, o) => a + o.theoWD, 0);                        // 总工作量（人·工作日）
-  out.avgTheoHours = out.nTheo ? withBoth.reduce((a, o) => a + o.hours, 0) / out.nTheo : null;  // 单均活量（小时）
+  out.theoSumWD = withBoth.reduce((a, o) => a + o.theoWD, 0);                        // total workload (person·workdays)
+  out.avgTheoHours = out.nTheo ? withBoth.reduce((a, o) => a + o.hours, 0) / out.nTheo : null;  // average work per order (hours)
   const turns = withBoth.map(o => o.turnWD).sort((a, b) => a - b);
   const pctile = q => turns.length ? turns[Math.min(turns.length - 1, Math.max(0, Math.ceil(q * turns.length) - 1))] : null;
   out.turnP50 = pctile(0.5); out.turnP90 = pctile(0.9); out.turnP95 = pctile(0.95);
   out.turnMax = turns.length ? turns[turns.length - 1] : null;
-  const BUCKETS = [[0,0,'当天'],[1,5,'1–5 天（约 1 周）'],[6,10,'6–10 天（约 2 周）'],
-    [11,21,'11–21 天（约 1 个月）'],[22,65,'22–65 天（约 1 季度）'],[66,Infinity,'超过 65 天（> 1 季度）']];
+  const BUCKETS = [[0,0,'Same day'],[1,5,'1–5 days (~1 week)'],[6,10,'6–10 days (~2 weeks)'],
+    [11,21,'11–21 days (~1 month)'],[22,65,'22–65 days (~1 quarter)'],[66,Infinity,'Over 65 days (> 1 quarter)']];
   let cum = 0;
   out.turnDist = BUCKETS.map(([lo, hi, label]) => { const n = turns.filter(t => t >= lo && t <= hi).length; cum += n;
     return { label, lo, hi, n, share: out.nTheo ? n / out.nTheo : 0, cumShare: out.nTheo ? cum / out.nTheo : 0 }; });
@@ -526,9 +526,9 @@ function runRetrospective(state, opts){
 }
 
 /* ====================================================================
-   SCHEDULE (deadline = 交付日期/required)
+   SCHEDULE (deadline = due date / required)
    ==================================================================== */
-function isWorkDay(d){ const dow = d.getDay(); return dow !== 0 && dow !== 6; }   // 周一至周五
+function isWorkDay(d){ const dow = d.getDay(); return dow !== 0 && dow !== 6; }   // Monday–Friday
 function runSchedule(state, opts){
   const wpw = WORKDAYS_PER_WEEK;
   const H = HOURS_PER_DAY;
@@ -538,15 +538,15 @@ function runSchedule(state, opts){
   const nWorkers = R.nWorkers, C = nWorkers * H; out.nWorkers = nWorkers; out.capacity = C;
   const start = parseISO(opts && opts.startDate) || new Date(); start.setHours(0,0,0,0); out.start = start;
 
-  // 排期只排「未完成」的订单（没填实际完成日期），从开工日（默认今天）向后排；
-  // 已完成的活归「复盘」管，不参与排期、不占产能。
+  // The schedule only covers UNFINISHED orders (no actual finish date), scheduled forward from the start day (default today);
+  // completed work belongs to the Retrospective and takes no part in scheduling or capacity.
   const openOrders = R.orders.filter(o => !o.actualFinish);
   out.nFinished = R.orders.length - openOrders.length;
   const orders = openOrders.map((o, i) => ({ id:o.id, so:o.so, seq:i, product:o.product, hours:o.total,
-    designH:o.designHours, verifyH:o.verifyHours, difficulty:o.difficulty, partsTxt:o.vcs.join('、'),
+    designH:o.designHours, verifyH:o.verifyHours, difficulty:o.difficulty, partsTxt:o.vcs.join(', '),
     designer:o.designer || '', checker:o.checker || '', deadline: parseISO(o.deadline), created: parseISO(o.created) }));
   out.noDeadline = orders.filter(o => !o.deadline).map(o => o.id);
-  const schedulable = orders.filter(o => o.hours > 1e-9);          // ①②连续/slot 排全部有工时的未完成单（无交期也排）
+  const schedulable = orders.filter(o => o.hours > 1e-9);          // ①② sequential/slot schedule every unfinished order with hours (including ones without a due date)
   const withDl = schedulable.filter(o => o.deadline); out.scheduledOrders = withDl;
   out.nOpen = schedulable.length;
   const ec = orders.filter(o => o.created).sort((a, b) => a.created - b.created)[0];
@@ -554,7 +554,7 @@ function runSchedule(state, opts){
   if (!schedulable.length){ out.noSchedule = true; return out; }
 
   const lastDl = withDl.length ? new Date(Math.max(...withDl.map(o => o.deadline.getTime()))) : new Date(start);
-  // 末交期是谁定的 + 疑似填错检测：交付日期比全部订单里最晚的创建日期还晚 1 年以上，多半是笔误/导入错位
+  // who sets the last due date + typo detection: a due date more than 1 year after the latest created date of all orders is most likely a typo / import misalignment
   out.lastDl = lastDl;
   out.lastDlOrders = withDl.filter(o => o.deadline.getTime() === lastDl.getTime()).map(o => o.id);
   const createds = R.orders.map(o => parseISO(o.created)).filter(Boolean);
@@ -562,16 +562,16 @@ function runSchedule(state, opts){
   out.maxCreated = maxCreated;
   out.farDeadlines = maxCreated ? withDl.filter(o => diffDays(o.deadline, maxCreated) > 365)
     .sort((a, b) => b.deadline - a.deadline).map(o => ({ id: o.id, deadline: o.deadline })) : [];
-  const total = schedulable.reduce((a, o) => a + o.hours, 0); out.total = total;   // 全部工时（含无交期）
-  // 年假：每人每年 AL 天，没有具体日期，按一年 52×5=260 个工作日均摊成日产能折扣（仅影响排期）
+  const total = schedulable.reduce((a, o) => a + o.hours, 0); out.total = total;   // all hours (including no due date)
+  // annual leave: AL days per person per year with no specific dates, spread over 52×5=260 workdays as a daily capacity discount (schedule only)
   const AL = Math.max(0, Math.min(100, Math.round(
     (opts && opts.annualLeaveDays != null && isFinite(+opts.annualLeaveDays)) ? +opts.annualLeaveDays
     : (state.settings && state.settings.annualLeave != null && isFinite(+state.settings.annualLeave)) ? +state.settings.annualLeave : 15)));
   const leaveFactor = Math.max(0, (260 - AL) / 260);
-  const baseCap = C * leaveFactor;   // 扣完年假后的日常团队产能
+  const baseCap = C * leaveFactor;   // everyday team capacity after annual leave
   out.annualLeave = AL; out.leaveFactor = leaveFactor; out.baseCap = baseCap;
-  // 请假登记：把落在每个工作日的请假小时数从当天产能里再扣掉（有具体日期的精确扣）
-  // 每条记录 hpd = 每天请假的小时数（留空/非法 = 整班 H，最多扣满一个班）
+  // leave records: subtract the leave hours that fall on each workday from that day's capacity (exact, dated deduction)
+  // each record hpd = leave hours per day (blank/invalid = full shift H, at most one full shift)
   const leaves = (state.leaves || []).map(L => {
     const s = parseISO(L && L.start); let e = parseISO(L && L.end) || s;
     const v = L && L.hours; const hpd = (v !== '' && v != null && isFinite(+v) && +v > 0) ? Math.min(H, +v) : H;
@@ -582,8 +582,8 @@ function runSchedule(state, opts){
   const dayCap = d => { let offH = 0; const t = d.getTime();
     for (const L of leaves) if (t >= L.s.getTime() && t <= L.e.getTime()) offH += L.hpd;
     return Math.max(0, baseCap - Math.min(baseCap, offH)); };
-  // 时间线：铺到末交期，且至少铺到全部工时能做完为止（连续排可能超出末交期），上限 1500 个工作日。
-  // 个人级模拟里最忙的人串行干完自己的队列可能比团队合力还慢——把时间线也铺到够他用。
+  // timeline: extend to the last due date, and at least until all hours can be done (sequential may run past the last due date), capped at 1500 workdays.
+  // in the per-person simulation the busiest worker doing their own queue serially may be slower than the whole team — extend the timeline far enough for them too.
   const loadPreview = new Map();
   schedulable.forEach(o => {
     if (o.designer && o.designH > 1e-9) loadPreview.set(o.designer, (loadPreview.get(o.designer) || 0) + o.designH);
@@ -596,7 +596,7 @@ function runSchedule(state, opts){
   while (days.length < 1500 && (cur.getTime() <= lastDl.getTime() || capSum < total - 1e-9 || days.length < needPersonalDays)){
     if (isWorkDay(cur)){ const c = dayCap(cur); days.push(new Date(cur)); cap.push(c); capSum += c; }
     cur.setDate(cur.getDate() + 1);
-    if (baseCap <= 1e-9 && cur.getTime() > lastDl.getTime()) break;   // 产能为 0 时避免空转
+    if (baseCap <= 1e-9 && cur.getTime() > lastDl.getTime()) break;   // avoid spinning when capacity is 0
   }
   if (!days.length){ days.push(new Date(start)); cap.push(dayCap(start)); }
   const N = days.length; out.days = days; out.N = N;
@@ -606,9 +606,9 @@ function runSchedule(state, opts){
   out.leaveDaysAffected = cap.filter(c => c < baseCap - 1e-9).length;
   const dlIndex = d => { let c = 0; for (let i = 0; i < N; i++){ if (days[i].getTime() <= d.getTime()) c++; else break; } return c; };
   withDl.forEach(o => o.Tg = dlIndex(o.deadline));
-  out.overdue = withDl.filter(o => o.deadline.getTime() < start.getTime()).map(o => o.id);   // 交期早于开工日 = 已逾期
+  out.overdue = withDl.filter(o => o.deadline.getTime() < start.getTime()).map(o => o.id);   // due before start day = already overdue
 
-  // ①② 逐单排队：按顺序连续消耗产能，得到每张单的预计开始/完成日
+  // ①② per-order queue: consume capacity in sequence to get each order's expected start/finish day
   const seqSchedule = seq => {
     const rows = []; let cum = 0, p = 0;
     for (const o of seq){
@@ -617,8 +617,8 @@ function runSchedule(state, opts){
       const startIdx = p < N ? p : null;
       while (p < N && capCum[p] < fH - 1e-9) p++;
       const finishIdx = p < N ? p : null;
-      const dlT = o.deadline ? dlIndex(o.deadline) : null;                       // 交期是第几个工作日（1-based）
-      const lateWD = (finishIdx != null && dlT != null) ? (finishIdx + 1) - dlT : null;   // >0 迟交, <0 提前, 0 当天
+      const dlT = o.deadline ? dlIndex(o.deadline) : null;                       // which workday the due date is (1-based)
+      const lateWD = (finishIdx != null && dlT != null) ? (finishIdx + 1) - dlT : null;   // >0 late, <0 early, 0 on the day
       rows.push({ id:o.id, so:o.so, product:o.product, hours:o.hours, designH:o.designH, verifyH:o.verifyH,
         created:o.created, deadline:o.deadline,
         designer:o.designer, checker:o.checker, startIdx, finishIdx, dlT, lateWD });
@@ -626,8 +626,8 @@ function runSchedule(state, opts){
     return rows;
   };
   const byCreated = (a, b) => ((a.created ? a.created.getTime() : Infinity) - (b.created ? b.created.getTime() : Infinity)) || (a.seq - b.seq);
-  out.seqCont = seqSchedule(schedulable.slice().sort(byCreated));                                  // ① 连续排：创建日期先后
-  out.seqSlot = seqSchedule(schedulable.slice().sort((a, b) =>                                     // ② 按交期：交期最早优先，无交期垫底
+  out.seqCont = seqSchedule(schedulable.slice().sort(byCreated));                                  // ① sequential: by created date
+  out.seqSlot = seqSchedule(schedulable.slice().sort((a, b) =>                                     // ② by due date: earliest due first, no due date last
     ((a.deadline ? a.deadline.getTime() : Infinity) - (b.deadline ? b.deadline.getTime() : Infinity)) || byCreated(a, b)));
   out.slotLate = out.seqSlot.filter(r => r.lateWD != null && r.lateWD > 0);
   out.contLate = out.seqCont.filter(r => r.lateWD != null && r.lateWD > 0);
@@ -640,9 +640,9 @@ function runSchedule(state, opts){
   for (let i = 0; i < N && rem > 1e-9; i++){ eager[i] = Math.min(cap[i], rem); rem -= eager[i]; }
   let eagerFinish = 0, acc = 0; for (let i = 0; i < N; i++){ acc += eager[i]; if (acc >= total - 1e-9){ eagerFinish = i + 1; break; } }
   out.eager = eager; out.eagerFinishDay = eagerFinish || N; out.eagerIdleDays = Math.max(0, N - (eagerFinish || N));
-  // 贴近交期（倒排/JIT）：从每个交期往前倒推，先争取在交期前 buffer 个工作日完成；
-  // 产能不够就再往前借天；还不够才动用缓冲期（完成贴到交期但不迟交）；仍不够 = 真超载（标红）。
-  // 交期从晚到早处理：晚交的活先占靠后的日子，天然实现「晚交的单不提前赶」。
+  // close to due date (backward / JIT): work back from each due date, first trying to finish `buffer` workdays before it;
+  // if capacity is short, borrow earlier days; only then use the buffer (finish right at the due date but not late); still short = truly overloaded (red).
+  // due dates are processed latest first: later work claims the later days, so naturally "orders due later aren't rushed early".
   const buffer = Math.max(0, Math.min(60, Math.round(
     (opts && opts.bufferDays != null && isFinite(+opts.bufferDays)) ? +opts.bufferDays
     : (state.settings && state.settings.schedBuffer != null && isFinite(+state.settings.schedBuffer)) ? +state.settings.schedBuffer : 2)));
@@ -651,32 +651,32 @@ function runSchedule(state, opts){
   const overloadDeadlines = []; const bufferShort = [];
   dls.slice().sort((a, b) => b.T - a.T).forEach(d => {
     let need = d.hours; let lastUsed = -1;
-    const end = Math.min(N - 1, d.T - 1);            // 不迟交的最后一个可用工作日
-    const idealEnd = end - buffer;                   // 目标完成日（交期前 buffer 个工作日）
+    const end = Math.min(N - 1, d.T - 1);            // last usable workday without being late
+    const idealEnd = end - buffer;                   // target finish day (buffer workdays before due)
     for (let i = idealEnd; i >= 0 && need > 1e-9; i--){ const t = Math.min(remCap[i], need); if (t > 0){ jit[i] += t; remCap[i] -= t; need -= t; if (i > lastUsed) lastUsed = i; } }
-    if (need > 1e-9){                                // 提前完不成 → 动用缓冲期（仍不迟交）
+    if (need > 1e-9){                                // can't finish early → use the buffer (still not late)
       bufferShort.push(d);
       for (let i = Math.max(0, idealEnd + 1); i <= end && need > 1e-9; i++){ const t = Math.min(remCap[i], need); if (t > 0){ jit[i] += t; remCap[i] -= t; need -= t; if (i > lastUsed) lastUsed = i; } }
     }
-    if (need > 1e-9){ overloadDeadlines.push(d); jit[Math.max(0, end)] += need; lastUsed = Math.max(0, end); }   // 真超载
-    d.jitFinishIdx = lastUsed < 0 ? Math.max(0, Math.min(idealEnd, end)) : lastUsed;   // 这批活最后一天排在哪
-    d.jitLeadWD = Math.max(0, (d.T - 1) - d.jitFinishIdx);                             // 比交期提前几个工作日
+    if (need > 1e-9){ overloadDeadlines.push(d); jit[Math.max(0, end)] += need; lastUsed = Math.max(0, end); }   // truly overloaded
+    d.jitFinishIdx = lastUsed < 0 ? Math.max(0, Math.min(idealEnd, end)) : lastUsed;   // last day this batch is scheduled on
+    d.jitLeadWD = Math.max(0, (d.T - 1) - d.jitFinishIdx);                             // how many workdays ahead of the due date
   });
   out.jit = jit; out.overloadDeadlines = overloadDeadlines; out.feasibleAll = dls.every(d => d.feasible);
   out.bufferShort = bufferShort.filter(d => !overloadDeadlines.includes(d));
   out.jitPeak = Math.max(0, ...jit); out.eagerPeak = Math.max(0, ...eager);
   out.eagerCum = []; out.jitCum = []; let a2 = 0, b2 = 0;
   for (let i = 0; i < N; i++){ a2 += eager[i]; b2 += jit[i]; out.eagerCum.push(a2); out.jitCum.push(b2); }
-  // 每个交期在「尽早做完」参考排法下最早哪天可交（eagerCum 首次覆盖应交累计的那天）
+  // earliest day each due date can be delivered under the "finish ASAP" reference schedule (first day eagerCum covers the cumulative amount due)
   { let k = 0;
     dls.forEach(d => { while (k < N - 1 && out.eagerCum[k] < d.cum - 1e-6) k++; d.eagerFinishIdx = k; }); }
 
-  // ---- ④ 个人级模拟：设计工时进设计工人自己的时间线，校对在该单设计完成后进校对工人的时间线；
-  //      请假按人精确扣、年假均摊。三种口径：
-  //      cont=① 连续排（按创建顺序正排）、slot=② 按交期（交期最早先做，正排）、
-  //      jit =③ 贴近交期（从交期往前倒排：校对贴在交期前 buffer 天完成，设计在校对开始前完成；只含有交期的单）。
-  //      正排口径下，同一人既设计又校对时先做完自己的设计队列再做校对（近似，见页面说明）。----
-  const baseW = H * leaveFactor;                                   // 每人每日可用（含年假均摊）
+  // ---- ④ per-person simulation: design hours go on the designer's own timeline, check goes on the checker's timeline after that order's design is done;
+  //      leave is deducted exactly per person, annual leave spread evenly. Three modes:
+  //      cont=① sequential (forward by created order), slot=② by due date (earliest due first, forward),
+  //      jit =③ close to due date (backward from due: check finishes `buffer` days before due, design finishes before check starts; only orders with a due date).
+  //      In forward modes, if the same person both designs and checks, they finish their own design queue before checking (an approximation, see page note). ----
+  const baseW = H * leaveFactor;                                   // available hours per person per day (with annual leave spread)
   const dayCapW = (name, i) => { let c = baseW; const ls = leavesByWorker.get(name);
     if (ls){ const t = days[i].getTime(); for (const L of ls) if (t >= L.s.getTime() && t <= L.e.getTime()) c -= L.hpd; }
     return Math.max(0, c); };
@@ -694,7 +694,7 @@ function runSchedule(state, opts){
       dH: dLoad.get(name) || 0, vH: vLoad.get(name) || 0, nD: dCnt.get(name) || 0, nV: vCnt.get(name) || 0,
       unplaced: unplacedBy.get(name) || 0 };
   }).sort((a, b) => b.total - a.total);
-  // 正排（cont / slot）：按给定顺序把设计排进各自时间线，校对按「该单设计完成日」先后排
+  // forward (cont / slot): put design on each timeline in the given order, then check in order of "this order's design finish day"
   const simForward = seq => {
     const pwDay = new Map(), pwOrders = new Map(), pwCursor = new Map(), unplacedBy = new Map();
     const ensure = name => { if (!pwDay.has(name)){ pwDay.set(name, new Float64Array(N)); pwOrders.set(name, {}); pwCursor.set(name, { d: 0 }); } };
@@ -721,11 +721,11 @@ function runSchedule(state, opts){
     });
     seq.filter(r => r.checker && r.verifyH > 1e-9)
       .slice().sort((a, b) => (designFin.get(a.id) - designFin.get(b.id)) || ((a.dlT != null ? a.dlT : 1e9) - (b.dlT != null ? b.dlT : 1e9)))
-      .forEach(r => { const dv = designFin.get(r.id); alloc(r.checker, r.verifyH, isFinite(dv) ? dv : N, (r.so || r.id) + '·校'); });
+      .forEach(r => { const dv = designFin.get(r.id); alloc(r.checker, r.verifyH, isFinite(dv) ? dv : N, (r.so || r.id) + '·chk'); });
     return { day: pwDay, orders: pwOrders, workers: pwSummary(pwDay, unplacedBy), skipped: 0 };
   };
-  // 倒排（jit）：交期晚的先占靠后的日子；校对从「交期前 buffer 天」往前找空，设计在校对开始那天之前完成。
-  // 交期前塞不下的小时数堆在最后可用日上（当天会超产能、页面标红 = 该人贴不进交期）。
+  // backward (jit): later due dates claim later days first; check searches backward from "buffer days before due", design finishes before the day check starts.
+  // hours that don't fit before the due date pile onto the last usable day (that day exceeds capacity, shown red = this person can't make the due date).
   const simJit = () => {
     const pwDay = new Map(), pwOrders = new Map(), unplacedBy = new Map();
     const ensure = name => { if (!pwDay.has(name)){ pwDay.set(name, new Float64Array(N)); pwOrders.set(name, {}); } };
@@ -738,13 +738,13 @@ function runSchedule(state, opts){
         if (free > 1e-9){ const take = Math.min(free, rem); arr[d] += take; rem -= take;
           first = d; (lab[d] || (lab[d] = [])).push(label); }
       }
-      for (let d = Math.max(0, idealEnd + 1); d <= Math.min(hardEnd, N - 1) && rem > 1e-9; d++){   // 动用缓冲期（仍不迟交）
+      for (let d = Math.max(0, idealEnd + 1); d <= Math.min(hardEnd, N - 1) && rem > 1e-9; d++){   // use the buffer (still not late)
         const free = dayCapW(name, d) - arr[d];
         if (free > 1e-9){ const take = Math.min(free, rem); arr[d] += take; rem -= take;
           if (first == null) first = d;
           (lab[d] || (lab[d] = [])).push(label); }
       }
-      if (rem > 1e-9){                                             // 真超载：贴不进交期
+      if (rem > 1e-9){                                             // truly overloaded: can't fit before the due date
         const d = Math.max(0, Math.min(hardEnd, N - 1));
         arr[d] += rem; (lab[d] || (lab[d] = [])).push(label);
         if (first == null) first = d;
@@ -754,28 +754,28 @@ function runSchedule(state, opts){
     };
     const withDlRows = out.seqSlot.filter(r => r.dlT != null).slice().sort((a, b) => b.dlT - a.dlT);
     withDlRows.forEach(r => {
-      const end = Math.max(0, Math.min(N - 1, r.dlT - 1));         // 交期当天 = 不迟交的最后一天
+      const end = Math.max(0, Math.min(N - 1, r.dlT - 1));         // due day = last day without being late
       const ideal = Math.max(0, end - buffer);
       let vStart = ideal;
-      if (r.checker && r.verifyH > 1e-9){ const a = allocB(r.checker, r.verifyH, ideal, end, (r.so || r.id) + '·校'); vStart = a.start == null ? ideal : a.start; }
+      if (r.checker && r.verifyH > 1e-9){ const a = allocB(r.checker, r.verifyH, ideal, end, (r.so || r.id) + '·chk'); vStart = a.start == null ? ideal : a.start; }
       if (r.designer && r.designH > 1e-9) allocB(r.designer, r.designH, vStart, vStart, r.so || r.id);
     });
     return { day: pwDay, orders: pwOrders, workers: pwSummary(pwDay, unplacedBy), skipped: out.seqSlot.length - withDlRows.length };
   };
   out.pw = { cont: simForward(out.seqCont), slot: simForward(out.seqSlot), jit: simJit() };
 
-  // ---- ⑤ 重新分配建议：把超载者的活转给较闲的人（只是建议，不改任何数据）。
-  //      有能力评级的按评级：只转给评级显示能胜任「该产品·该环节·该难度」的人；
-  //      没有任何评级能胜任的人选时，退回「谁空谁来」——转给最闲且评级空白的人（标「能力未填」，请先人工确认）；
-  //      评级明确写着不胜任的人永远不推荐。设计环节只转给别人当设计、校对环节只转给别人当校对，绝不混。----
+  // ---- ⑤ reassignment suggestions: move overloaded workers' work to less busy people (suggestions only, no data is changed).
+  //      With ability grades: only move to someone whose grade covers "this product · this role · this difficulty";
+  //      if no graded candidate can do it, fall back to "whoever is free" — the least busy person with blank grades (flagged "ability not filled", confirm manually first);
+  //      people whose grade explicitly says they can't do it are never suggested. Design only goes to designers, check only to checkers — never mixed. ----
   const wByName = new Map((R.workers || []).map(w => [w.name, w]));
   const loads = new Map(loadPreview);
   (R.workers || []).forEach(w => { if (!loads.has(w.name)) loads.set(w.name, 0); });
-  const load0 = new Map(loads);                            // 调整前的原始负载（页面展示用）
+  const load0 = new Map(loads);                            // original load before adjustment (for display)
   const pool = [...loads.keys()];
   const totalLoad = [...loads.values()].reduce((a, b) => a + b, 0);
   const avgLoad = pool.length ? totalLoad / pool.length : 0;
-  const canDo = (name, o, role) => {                       // 'ok' | 'unknown'(能力未填) | null(评级不胜任/不在名册)
+  const canDo = (name, o, role) => {                       // 'ok' | 'unknown' (ability not filled) | null (grade can't do it / not on roster)
     const w = wByName.get(name); if (!w) return null;
     const g = roleGrade(w, o.product, role);
     if (!g) return 'unknown';
@@ -786,32 +786,32 @@ function runSchedule(state, opts){
       if (o.designer === name && o.designH > 1e-9) list.push({ o, role:'d', h:o.designH });
       if (o.checker === name && o.verifyH > 1e-9) list.push({ o, role:'v', h:o.verifyH });
     }); return list.sort((a, b) => b.h - a.h); };
-  const moves = []; const usedTask = new Set();            // 同一张单的同一环节只转一次
+  const moves = []; const usedTask = new Set();            // each role of an order is moved at most once
   if (avgLoad > 0){
     const overs = pool.filter(n => loads.get(n) > avgLoad * 1.15).sort((a, b) => loads.get(b) - loads.get(a));
     for (const from of overs){
-      let lastTo = null;                                   // 打包：小单尽量持续转给同一个人，凑成整块（而不是散给所有人每人一小时）
-      for (const t of tasksOf(from)){                      // 从最大的活开始转
-        if (loads.get(from) <= avgLoad * 1.05 + 1e-9) break;      // 已接近平均，够了
+      let lastTo = null;                                   // bundling: keep giving small orders to the same person to form a solid block (instead of an hour to everyone)
+      for (const t of tasksOf(from)){                      // start moving from the biggest task
+        if (loads.get(from) <= avgLoad * 1.05 + 1e-9) break;      // close to average, enough
         const key = t.o.id + '¦' + t.role;
-        if (usedTask.has(key) || t.h < 0.02) continue;            // 只跳过几乎为 0 的碎屑（很多单每张只有零点几小时，不能因小而不转）
-        if (loads.get(from) - t.h < avgLoad * 0.8) continue;      // 整单转走会矫枉过正 → 试更小的单
-        // 接收上限：一般不超过平均值；单子本身比平均值大时放宽到「平均 + 半个单」，否则大单永远转不动
+        if (usedTask.has(key) || t.h < 0.02) continue;            // only skip near-zero crumbs (many orders are a fraction of an hour each; don't skip them for being small)
+        if (loads.get(from) - t.h < avgLoad * 0.8) continue;      // moving the whole order would overcorrect → try a smaller one
+        // receiver cap: generally not above average; when the order itself is bigger than average, relax to "average + half an order", otherwise big orders never move
         const recvCap = Math.max(avgLoad * 1.05, avgLoad + t.h / 2);
         const fits = n => n !== from && loads.get(n) + t.h <= recvCap + 1e-9;
         const st = n => canDo(n, t.o, t.role);
         let to = null, sure = false;
-        if (lastTo && fits(lastTo) && st(lastTo) === 'ok'){ to = lastTo; sure = true; }   // 评级胜任的上一接收者 → 继续给他
+        if (lastTo && fits(lastTo) && st(lastTo) === 'ok'){ to = lastTo; sure = true; }   // previous receiver whose grade qualifies → keep giving to them
         else {
-          const rated = pool.filter(n => fits(n) && st(n) === 'ok');                      // 有评级按评级
+          const rated = pool.filter(n => fits(n) && st(n) === 'ok');                      // graded people by grade
           if (rated.length){ to = rated[0]; for (const n of rated) if (loads.get(n) < loads.get(to)) to = n; sure = true; }
-          else if (lastTo && fits(lastTo) && st(lastTo) === 'unknown'){ to = lastTo; }    // 否则谁空谁来（未填评级）
+          else if (lastTo && fits(lastTo) && st(lastTo) === 'unknown'){ to = lastTo; }    // otherwise whoever is free (grade not filled)
           else {
             const blank = pool.filter(n => fits(n) && st(n) === 'unknown');
             if (blank.length){ to = blank[0]; for (const n of blank) if (loads.get(n) < loads.get(to)) to = n; }
           }
         }
-        if (!to) continue;                                        // 其余人评级都写明不胜任 → 这单不转
+        if (!to) continue;                                        // everyone else's grade explicitly can't → don't move this order
         lastTo = to;
         usedTask.add(key);
         moves.push({ from, to, id: t.o.so || t.o.id, role: t.role, h: t.h, sure });
@@ -820,12 +820,12 @@ function runSchedule(state, opts){
       }
     }
   }
-  const byPair = new Map();                                // 汇总成「从 A → 转给 B」的建议行（一行可含很多张小单）
+  const byPair = new Map();                                // aggregate into "from A → to B" suggestion rows (one row may hold many small orders)
   moves.forEach(m => { const k = m.from + '¦' + m.to;
     if (!byPair.has(k)) byPair.set(k, { from: m.from, to: m.to, fromLoad: load0.get(m.from) || 0, toLoad: load0.get(m.to) || 0, amount: 0, examples: [] });
     const p = byPair.get(k); p.amount += m.h; p.examples.push({ id: m.id, role: m.role, h: m.h, sure: m.sure }); });
   const sugg = [...byPair.values()].sort((a, b) => b.amount - a.amount)
-    .filter(p => p.amount >= Math.max(0.5, avgLoad * 0.01));      // 合计不到半小时级别的碎条不展示
+    .filter(p => p.amount >= Math.max(0.5, avgLoad * 0.01));      // don't show crumb rows totalling under ~half an hour
   out.rebalance = { avgLoad, suggestions: sugg,
     maxBefore: Math.max(0, ...load0.values()),
     maxAfter: Math.max(0, ...loads.values()) };

@@ -57,7 +57,7 @@ main{padding:22px var(--gutter)}
   border-radius:10px;padding:10px 14px;margin-bottom:14px;box-shadow:var(--shadow)}
 .settings-bar .settings-label{font-weight:650;color:var(--ink)}
 .settings-bar label{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted)}
-.settings-bar .h-高{color:var(--hi)} .settings-bar .h-低{color:var(--lo)} .settings-bar .h-无{color:var(--none)}
+.settings-bar .h-High{color:var(--hi)} .settings-bar .h-Low{color:var(--lo)} .settings-bar .h-None{color:var(--none)}
 .settings-bar input[type=number]{width:74px;padding:6px 8px;border:1px solid var(--line-strong);border-radius:7px;
   text-align:right;font-variant-numeric:tabular-nums;background:#fff}
 .settings-bar input[type=number]:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
@@ -137,14 +137,14 @@ td.parts-cell{padding:6px 10px}
 .pp-empty{color:var(--muted);font-size:12.5px}
 
 /* category / grade coloring */
-select.cat-高{color:var(--hi);font-weight:650}
-select.cat-低{color:var(--lo);font-weight:650}
-select.cat-无{color:var(--none);font-weight:650}
+select.cat-High{color:var(--hi);font-weight:650}
+select.cat-Low{color:var(--lo);font-weight:650}
+select.cat-None{color:var(--none);font-weight:650}
 select.g-A{color:#1d4fd0}
 select.g-B{color:#9a7a14}
 select.g-C{color:#7a4ea0}
 td.matrix-name input{font-weight:600}
-/* worker ability matrix: product name spans 设计|校验; sub-columns aligned; product groups separated */
+/* worker ability matrix: product name spans Design|Check; sub-columns aligned; product groups separated */
 table.matrix th{text-align:center}
 table.matrix th.role-head{min-width:104px;padding:8px 6px 6px;font-weight:700}
 table.matrix th.sub-d, table.matrix th.sub-v{font-size:11px;color:var(--muted);font-weight:600;padding:4px 6px;min-width:52px}
@@ -152,7 +152,7 @@ table.matrix th.wname{text-align:left;min-width:130px}
 td.gradecell{text-align:center;padding:5px 6px}
 /* vertical separator at the start of each product group */
 table.matrix th.grp-start, table.matrix td.grp-start{border-left:2px solid var(--line-strong)}
-/* freeze the # and 姓名 columns while scrolling many products horizontally */
+/* freeze the # and Name columns while scrolling many products horizontally */
 table.matrix th.rownum, table.matrix td.rownum{position:sticky;left:0;z-index:2;background:#fff}
 table.matrix th.wname, table.matrix td.matrix-name{position:sticky;left:42px;z-index:2;background:#fff}
 table.matrix thead th.rownum, table.matrix thead th.wname{z-index:4;background:#f7f9fd}
@@ -228,7 +228,7 @@ tr.infeasible td{background:var(--danger-soft)}
 .alert.warn{background:var(--warn-soft);color:var(--warn);border:1px solid #f3d8b8}
 .alert.ok{background:var(--ok-soft);color:var(--ok);border:1px solid #c4e9d3}
 .alert.info{background:#e8f1fd;color:#1d4ed8;border:1px solid #bcd5f5}
-/* 名册↔台账对账标色：蓝 = 名册有但台账无此名；橙 = 台账有但名册无此名 */
+/* roster↔hour-log reconciliation colors: blue = on roster but not in log; orange = in log but not on roster */
 tr.unmatched-roster td{background:#e8f1fd}
 tr.unmatched-hourlog td{background:var(--warn-soft)}
 .alert ul{margin:6px 0 0;padding-left:18px}
@@ -246,7 +246,7 @@ tr.unmatched-hourlog td{background:var(--warn-soft)}
 .toast.err{background:var(--danger)}
 .toast.ok{background:var(--ok)}
 
-/* 可折叠小节（排期/复盘）：foldify() 把「小节标题+内容」包进 <details> */
+/* collapsible sections (Schedule/Retrospective): foldify() wraps "section title + content" in <details> */
 details.fold{margin:0}
 details.fold > summary{cursor:pointer;list-style:none;user-select:none}
 details.fold > summary::-webkit-details-marker{display:none}

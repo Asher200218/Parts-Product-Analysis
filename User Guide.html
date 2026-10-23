@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Parts Analysis — User Guide</title>
+<style>
+  :root{--ink:#1c2333;--muted:#667085;--line:#e5e8f0;--brand:#3b5bdb;--soft:#f6f8fc;--warn:#b45309;--warnbg:#fdf3e7;--okbg:#eaf7f0;--ok:#15803d;--info:#1d4ed8;--infobg:#e8f1fd}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);margin:0;background:#fff;line-height:1.75}
+  .wrap{max-width:880px;margin:0 auto;padding:32px 22px 80px}
+  h1{font-size:26px;margin:8px 0 4px}
+  h2{font-size:20px;margin:38px 0 10px;padding-top:18px;border-top:2px solid var(--line)}
+  h3{font-size:16px;margin:22px 0 6px}
+  .sub{color:var(--muted);margin:0 0 18px}
+  .pill{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:99px;padding:2px 12px;font-size:12.5px;color:var(--muted);margin-right:6px}
+  .box{border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:12px 0;background:var(--soft)}
+  .box.warn{background:var(--warnbg);border-color:#f3d8b8;color:var(--warn)}
+  .box.ok{background:var(--okbg);border-color:#c4e9d3;color:var(--ok)}
+  .box.info{background:var(--infobg);border-color:#bcd5f5;color:var(--info)}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:var(--soft)}
+  code,kbd{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:13px;font-family:Menlo,Consolas,monospace}
+  ol li,ul li{margin:5px 0}
+  .step{font-weight:700;color:var(--brand)}
+  .tag{display:inline-block;font-size:12px;border-radius:6px;padding:1px 8px;margin-right:4px;font-weight:600}
+  .t-blue{background:var(--infobg);color:var(--info)}
+  .t-orange{background:var(--warnbg);color:var(--warn)}
+  .toc{columns:2;gap:28px;font-size:14.5px}
+  .toc a{color:var(--brand);text-decoration:none}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Parts · Products · Workers Analysis</h1>
+<p class="sub">Local web app · Windows user guide
+<span class="pill">v50 · 2026-10</span><span class="pill">🔒 100% local · no network · no uploads</span></p>
+
+<div class="box ok"><b>In one sentence:</b> an analysis web page that runs entirely on your computer. You enter or import products, parts (VC), workers, orders and the hour-report hour log; it calculates theoretical hours and gives you a <b>Schedule</b> (what to do next), a <b>Retrospective</b> (how the past went) and a <b>theory vs actual</b> comparison. All data stays in this computer's browser, and it works with the network unplugged.</div>
+
+<h2 id="toc">Contents</h2>
+<div class="toc">
+<p><a href="#start">1. Quick start</a><br/>
+<a href="#data">2. Where data is stored · backups</a><br/>
+<a href="#pages">3. The nine tabs</a><br/>
+<a href="#rules">4. Calculation rules</a></p>
+<p><a href="#flow">5. Recommended workflow</a><br/>
+<a href="#colors">6. Blue/orange reconciliation colors</a><br/>
+<a href="#faq">7. FAQ</a><br/>
+<a href="#files">8. What's in the folder</a></p>
+</div>
+
+<h2 id="start">1. Quick start</h2>
+<ol>
+<li><span class="step">Step 1</span> Copy the <b>whole folder</b> (e.g. from a USB drive) to a local disk on the Windows PC (such as drive D: or the Desktop).</li>
+<li><span class="step">Step 2</span> Double-click <code>Parts Analysis.exe</code>.</li>
+<li><span class="step">Step 3</span> If Windows shows the blue "Windows protected your PC" (SmartScreen) message, click <b>"More info" → "Run anyway"</b>. Every small tool without a paid signing certificate gets this message; the program itself never goes online.</li>
+<li><span class="step">Step 4</span> A <b>small black window</b> (the local server) appears and the browser opens <code>http://localhost:4173</code>. <b>Keep the black window open while you work</b>; close it when you're done. Your data is not lost.</li>
+</ol>
+<div class="box">💡 Nothing happens when you double-click the exe, or the browser doesn't open? Type <code>http://localhost:4173</code> into the browser yourself. If that still doesn't work, use the fallback: double-click <code>Start without exe.bat</code> in the folder.</div>
+
+<h2 id="data">2. Where data is stored · backups</h2>
+<ul>
+<li>All data is saved in the <b>browser's local storage</b> (localStorage), tied to "this computer + this browser". The USB drive carries the <b>program</b>, not the data.</li>
+<li>So switching computers, switching browsers (e.g. from Edge to Chrome) or <b>clearing browser data</b> means you won't see your old data. Make backups a habit.</li>
+<li><b>How to back up:</b> Import/Export tab → "Export full backup .json" downloads one JSON file. On a new computer, drop that JSON onto the import area to restore everything exactly (including all settings).</li>
+<li>Always use the <b>same browser</b> and keep the address <code>localhost:4173</code> (the exe and the fallback .bat use the same port, so they share data).</li>
+<li>Data saved by the earlier Chinese version is converted automatically the first time you open this version.</li>
+</ul>
+
+<h2 id="pages">3. The nine tabs</h2>
+
+<h3>① Products</h3>
+<p>Register product names (e.g. Alpha, Beta). Product names become the columns of the worker ability table and the types referenced by orders.</p>
+
+<h3>② Parts (VC)</h3>
+<ul>
+<li>One VC (3-digit code) per row: <b>difficulty</b> (High/Low/None, decides who can do it) + <b>repeat design hours t7</b> + <b>first-order design hours t8</b>.</li>
+<li>At the top of the page is the <b>check ratio</b> setting: check hours = design hours × ratio (default 0.3; calibrating it from real data on the Hour Log tab is recommended).</li>
+<li>parts.xlsx can be imported (column 1 = VC, column 8 = t7, column 9 = t8).</li>
+</ul>
+
+<h3>③ Workers</h3>
+<ul>
+<li>Two cells per person per product: <b>design</b> grade and <b>check</b> grade (A/B/C, blank = doesn't do it). A = can do High/Low/None, B = Low/None, C = None only. Grades only decide <b>whether</b> someone can do the work; hours come from the VC table.</li>
+<li>At the bottom of the page are <b>leave records</b>: pick a person, enter start/end dates and leave hours per day (blank = full day). They <b>only affect Schedule capacity</b>, not Analysis or Retrospective.</li>
+</ul>
+
+<h3>④ Orders</h3>
+<ul>
+<li>One order per row: order no. + product + VC list + designer/checker + due date + created date + actual finish date.</li>
+<li><b>Smart import:</b> click "Import orders.xlsx" and give it the big sheet exported from the company system. The program <b>finds the header row anywhere in the sheet</b>, matches columns by keyword (Sales Order / Sales Order Item / Engineer VC / Designer / Checker / Product Series / BOM Required Date / Create On / Actual BOM Finish Date, etc. — English and Chinese headers both work) and shows a <b>mapping dialog</b> for you to check before importing.</li>
+<li><b>Order no.</b> = Sales Order + "-" + Item (leading zeros removed), e.g. <code>123456789-1200</code>; every table and export uses it to identify orders.</li>
+<li><b>The actual finish date is the dividing line:</b> filled in = completed → goes to the Retrospective; blank = unfinished → goes to the Schedule.</li>
+</ul>
+
+<h3>⑤ Import/Export</h3>
+<p>The drop area recognizes parts / workers / orders / HourReport files automatically; you can export Excel files; <b>full backup/restore</b> is here too.</p>
+
+<h3>⑥ Analysis — theoretical hours vs actual logged hours</h3>
+<ul>
+<li><b>Theoretical hours summary:</b> design/check theoretical hours of all orders from the VC table, team daily capacity, and how many workdays the whole team needs.</li>
+<li><b>Theory vs actual (everyone):</b> once an hour log is imported, compares theory / actual / difference / ratio for each stage.</li>
+<li><b>Per worker theory vs actual:</b> theoretical hours of each person's assigned orders vs hours actually logged.</li>
+<li><b>Order hours detail:</b> VC count, coefficient and the source of design/check hours for every order.</li>
+</ul>
+
+<h3>⑦ Schedule — only unfinished orders, starting today</h3>
+<ul>
+<li>Three methods, each giving every order an expected start/finish date and days early/late (designer/checker shown on every row):
+  <br/>① <b>Sequential</b>: ignores due dates, queues by created date, finishes one then starts the next;
+  <br/>② <b>By due date (slot)</b>: earliest due first; when work finishes early, later tasks fill the free time automatically;
+  <br/>③ <b>Close to due date</b> (reference): starts as late as possible and finishes N workdays before the due date (adjustable buffer).</li>
+<li>Capacity = people × hours per person per day, minus spread-out annual leave (configurable) and exact leave records; only Monday–Friday count as workdays.</li>
+<li>④ <b>Per worker · personal schedule:</b> each person's own timeline — design hours go to the designer, check goes to the checker after that order's design is done. The dropdown switches between the three methods. The summary table lists each person's orders, total hours, earliest start and busy-until date; pick a worker to see a day-by-day progress bar and the orders handled each day.</li>
+<li>⑤ <b>Reassignment suggestions:</b> suggests moving work from overloaded workers to less busy ones — by grade where grades exist (never someone whose grade can't do it); when no graded candidate fits, "whoever is free", flagged "ability not filled". Design only moves to designers, check only to checkers; many small orders are bundled and moved to the same person. These are suggestions only and never change your data.</li>
+<li>Long tables can be collapsed: sections over 30 rows start collapsed (on both Schedule and Retrospective). Click a section title to expand/collapse; "Expand all / Collapse all" buttons are at the top. Collapsing doesn't affect exports.</li>
+<li>Automatic warnings: overdue orders whose due date has passed, and suspiciously distant due dates (e.g. 2027) that look like typos.</li>
+<li>"Export report" contains the full daily timeline, both full per-order tables, per-person daily load (for the method currently selected on the page) and the full reassignment list (not limited by how many rows the page shows).</li>
+</ul>
+
+<h3>⑧ Retrospective — completed orders only (earliest created date → today)</h3>
+<ul>
+<li><b>Actual delivery performance:</b> on-time rate, number of late orders, median/longest delay (each measured against that order's own due date).</li>
+<li><b>Completion speed:</b> half of orders ≤ X workdays, 90% ≤ Y days, the slowest 5%, plus a distribution bar.</li>
+<li><b>Load per worker:</b> actual logged hours ÷ available hours per year ((260 − annual leave) × hours per person per day); over 100% is red.</li>
+<li><b>Standard vs actual hours:</b> each person's efficiency = standard ÷ actual (&gt;100% means faster than standard).</li>
+</ul>
+
+<h3>⑨ Hour Log — hour-report integration</h3>
+<ul>
+<li>Import <code>HourReport_{year}_Analysis.xlsx</code> exported from hour-report (drop it on the Import tab or use the button on the Hour Log tab; detected by the <code>Data (long)</code> sheet).</li>
+<li>See each person's hours for the year: order design/check, overtime, leave, utilization, order hours per day.</li>
+<li><b>📐 Actual-hours basis (important):</b> one click replaces three settings with real values — hours per person per day (average hours actually spent on orders per day), check ratio (actual check ÷ design), and schedule annual leave set to zero (real data already includes leave). After that, Analysis / Schedule / Retrospective all follow the real pace. Strongly recommended once you've imported an hour log.</li>
+</ul>
+
+<h2 id="rules">4. Calculation rules</h2>
+<table>
+<tr><th style="width:130px">Rule</th><th>Details</th></tr>
+<tr><td>Design hours</td><td>Σ(hours of each VC in the order) × quantity coefficient: ≤5 VCs ×1, 6–10 ×1.2, &gt;10 ×1.5</td></tr>
+<tr><td>First vs repeat</td><td>For the same "product + VC", the order with the earliest created date uses t8 (first order); later ones use t7</td></tr>
+<tr><td>Special values</td><td>Hours of 0 → counted as 0.03h; VC 999 → fixed 0.08h</td></tr>
+<tr><td>Check hours</td><td>Design × check ratio (default 0.3, can be calibrated from the hour log)</td></tr>
+<tr><td>Void orders</td><td>Orders whose designer/checker is null / special order / order canceled are excluded entirely</td></tr>
+<tr><td>Workdays</td><td>Monday–Friday only; annual leave is spread over 260 workdays per year as a capacity discount</td></tr>
+<tr><td>Order no.</td><td>Sales Order + "-" + Item (leading zeros removed), e.g. 123456789-1200</td></tr>
+<tr><td>Completed / open</td><td>Decided by whether "Actual finish date" is filled in: open → Schedule, completed → Retrospective</td></tr>
+</table>
+
+<h2 id="flow">5. Recommended workflow</h2>
+<ol>
+<li><b>First time:</b> import the big order sheet (smart import on the Orders tab) → import parts.xlsx → import the HourReport log → click "Apply actual basis" on the Hour Log tab → look at Analysis / Schedule / Retrospective in turn.</li>
+<li><b>Daily / monthly:</b> re-import the latest order sheet and hour log (replace mode) → re-run the three tabs.</li>
+<li><b>As you go:</b> after any big change, make a full backup on the Import/Export tab.</li>
+</ol>
+
+<h2 id="colors">6. Blue/orange reconciliation colors</h2>
+<p>The worker roster (Workers tab) and the hour log are matched by <b>exact name</b>. If the spelling differs (e.g. the roster says Sam and the hour log uses a Chinese name), they won't link up, and the program marks it with color:</p>
+<ul>
+<li><span class="tag t-blue">🔵 Blue</span> On the roster but not in the hour log — either they really logged nothing, or the names are spelled differently;</li>
+<li><span class="tag t-orange">🟠 Orange</span> Logged hours in the hour log but not on the roster.</li>
+</ul>
+<p>If you see lots of blue/orange, change the names on one side to match and they'll link up automatically (the two colored notes at the top of the Hour Log tab list the exact names).</p>
+
+<h2 id="faq">7. FAQ</h2>
+<table>
+<tr><th style="width:220px">Question</th><th>Answer</th></tr>
+<tr><td>Windows blocks the exe</td><td>SmartScreen warns about every small tool without a paid signature. Click "More info" → "Run anyway". The program doesn't go online — you can disconnect the network first to check.</td></tr>
+<tr><td>Will closing the black window lose data?</td><td>No. Data lives in the browser; the black window is only the local server. Double-click the exe next time and carry on.</td></tr>
+<tr><td>The browser didn't open</td><td>Go to <code>http://localhost:4173</code> yourself, or use <code>Start without exe.bat</code>.</td></tr>
+<tr><td>My data suddenly "disappeared"</td><td>Most likely a different browser, a different address (e.g. 127.0.0.1 vs localhost) or cleared browser data. Go back to the original browser + localhost:4173; if it's gone, restore from your full backup JSON.</td></tr>
+<tr><td>The schedule shows a year far in the past/future</td><td>The timeline ends at the latest due date. The program names the orders whose due date is more than a year after the latest created date (likely typos); search for that year on the Orders tab and fix it.</td></tr>
+<tr><td>Someone shows 0 hours (blue) in the Retrospective</td><td>It doesn't mean they did nothing — it's a name-matching issue or no hours were logged, see the previous section.</td></tr>
+<tr><td>Does it upload our data?</td><td>No. The exe only listens on this computer (127.0.0.1), all calculations run in the browser, and Excel is parsed with a bundled library. It works fully offline.</td></tr>
+<tr><td>Can several people use it at once?</td><td>It's a single-computer tool. To share results, send the Excel from each tab's "Export report .xlsx".</td></tr>
+</table>
+
+<h2 id="files">8. What's in the folder</h2>
+<table>
+<tr><th style="width:220px">File</th><th>Purpose</th></tr>
+<tr><td><code>Parts Analysis.exe</code></td><td>The program (Windows 64-bit). Double-click to use — the web pages are built in, nothing to install.</td></tr>
+<tr><td><code>User Guide.html</code></td><td>This document.</td></tr>
+<tr><td><code>Quick Start.txt</code></td><td>The short version.</td></tr>
+<tr><td><code>Start without exe.bat</code></td><td>Fallback when company policy blocks the exe (starts the server with the system's Python or PowerShell; same result, shares the same data).</td></tr>
+<tr><td><code>web/</code></td><td>Web page source (used by the fallback; also handy for IT review — all readable HTML/JS, no network requests).</td></tr>
+<tr><td><code>main.go</code></td><td>Source of the exe launcher (rebuild with Go, see README).</td></tr>
+</table>
+
+<p class="muted">v50 · 2026-10 · the tool and data are 100% local, with no network transfer.</p>
+</div></body>
+</html>
